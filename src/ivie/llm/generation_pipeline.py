@@ -712,8 +712,34 @@ def verify_objective_completability(world: GeneratedWorld) -> bool:
         return False
     
     elif obj_type in ["SOLVE_MYSTERY", "solve_mystery"]:
-        # Mystery validation is already handled by the Pydantic models and MysteryClue validation
-        # in the structured_data_models.py, so if we get here, it should be valid
+        # Mirror the clue filter in create_world_from_llm_response: a clue is kept if its item
+        # exists and, when item_location is given, the item is actually in that location.
+        # Clues are discovered by taking or examining their item, so a kept clue whose item
+        # is not in any location or character inventory can never be discovered.
+        items_by_location = {location.name: set(location.items) for location in world.locations}
+        discoverable_items = set()
+        for location in world.locations:
+            discoverable_items.update(location.items)
+        for character in world.characters:
+            discoverable_items.update(character.inventory)
+
+        kept_clues = 0
+        for clue in objective.mystery_clues or []:
+            if clue.associated_item not in item_names:
+                print(f"[WARNING] Mystery clue '{clue.name}' refers to non-existent item '{clue.associated_item}' and will be dropped")
+                continue
+            if clue.item_location:
+                if clue.associated_item not in items_by_location.get(clue.item_location, set()):
+                    print(f"[WARNING] Mystery clue '{clue.name}': item '{clue.associated_item}' is not in '{clue.item_location}', the clue will be dropped")
+                    continue
+            elif clue.associated_item not in discoverable_items:
+                print(f"[ERROR] Mystery clue '{clue.name}': item '{clue.associated_item}' is not placed anywhere, so the clue can never be discovered")
+                return False
+            kept_clues += 1
+
+        if kept_clues == 0:
+            print(f"[ERROR] SOLVE_MYSTERY objective has no valid clues")
+            return False
         return True
     
     else:
