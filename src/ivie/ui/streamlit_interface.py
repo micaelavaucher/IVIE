@@ -12,7 +12,7 @@ import base64
 from ..config import load_config
 from ..llm.models import get_llm
 from ..core.game_logic import create_game_loop, generate_starting_narration
-from ..llm.generation_pipeline import create_world_incrementally_generate
+from ..llm.generation_pipeline import create_world_incrementally, create_world_incrementally_generate
 from ..core.world_builder import create_world_from_llm_response
 from .ui_components import get_ui_texts, get_progress_messages
 import examples.example_worlds as example_worlds
@@ -435,61 +435,31 @@ def generate_world_from_inspiration(inspiration: str):
             reasoning_model = get_llm(reasoning_model_name)
             narrative_model = get_llm(narrative_model_name)
             
-            # Step-by-step generation with proper progress tracking
-            from ..llm.generation_pipeline import run_step_1_concept, run_step_2_skeleton, run_step_3_details, run_step_4_puzzles
-            
-            # Step 1: Concept
-            status_text.text(progress_messages['STEP_1'])
-            progress_bar.progress(0.1)
-            time.sleep(0.2)
+            # Validated pipeline (same retries and checks as Generate mode).
+            # The pipeline reports progress with fixed messages; map the start of each step
+            # to the localized UI message and progress value.
+            step_progress = {
+                "📝": ('STEP_1', 0.1),
+                "🦴": ('STEP_2', 0.3),
+                "🌍": ('STEP_3', 0.5),
+                "🧩": ('STEP_4', 0.7),
+            }
+
+            def on_progress(message):
+                for prefix, (key, value) in step_progress.items():
+                    if message.startswith(prefix):
+                        status_text.text(progress_messages[key])
+                        progress_bar.progress(value)
+                        return
+                if message.startswith("[WARNING]"):
+                    if st.session_state.language == 'es':
+                        status_text.text("🔄 La validación detectó un problema, regenerando este paso...")
+                    else:
+                        status_text.text("🔄 Validation found an issue, regenerating this step...")
+
             print(f"session_state: {st.session_state}")
-            concept = run_step_1_concept(inspiration, st.session_state.language)
-            status_text.text(progress_messages['STEP_1_COMPLETE'].format(title=concept.title))
-            progress_bar.progress(0.2)
-            time.sleep(0.3)
-            
-            # Step 2: Skeleton
-            status_text.text(progress_messages['STEP_2'])
-            progress_bar.progress(0.3)
-            time.sleep(0.2)
-            
-            skeleton = run_step_2_skeleton(concept, st.session_state.language)
-            status_text.text(progress_messages['STEP_2_COMPLETE'].format(
-                locations=len(skeleton.key_locations),
-                items=len(skeleton.key_items),
-                characters=len(skeleton.key_characters)
-            ))
-            progress_bar.progress(0.5)
-            time.sleep(0.3)
-            
-            # Step 3: Details
-            status_text.text(progress_messages['STEP_3'])
-            progress_bar.progress(0.6)
-            time.sleep(0.2)
-            
-            world_basic = run_step_3_details(concept, skeleton, st.session_state.language)
-            status_text.text(progress_messages['STEP_3_COMPLETE'].format(
-                locations=len(world_basic.locations),
-                items=len(world_basic.items)
-            ))
-            progress_bar.progress(0.7)
-            time.sleep(0.3)
-            
-            # Step 4: Puzzles
-            status_text.text(progress_messages['STEP_4'])
-            progress_bar.progress(0.8)
-            time.sleep(0.2)
-            
-            world_with_puzzles = run_step_4_puzzles(world_basic, st.session_state.language)
-            status_text.text(progress_messages['STEP_4_COMPLETE'].format(
-                puzzles=len(world_with_puzzles.puzzles)
-            ))
-            progress_bar.progress(0.9)
-            time.sleep(0.3)
-            
-            # Step 5: Final expansion (optional, simplified)
-            generated_world = world_with_puzzles  # Skip expansion for now to be faster
-            
+            generated_world = create_world_incrementally(inspiration, st.session_state.language, progress_callback=on_progress)
+
             status_text.text(progress_messages['PIPELINE_COMPLETE'])
             progress_bar.progress(0.95)
             time.sleep(0.2)
