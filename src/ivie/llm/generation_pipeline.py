@@ -284,7 +284,8 @@ def create_world_incrementally(theme: str, language: str, progress_callback=None
         
         # Validate and fix puzzle rewards
         rewards_ok, world_with_puzzles = verify_puzzle_rewards_and_fix(world_with_puzzles)
-        
+        world_with_puzzles = place_unplaced_required_items(world_with_puzzles)
+
         connectivity_ok = verify_location_connectivity(world_with_puzzles)
         objective_ok = verify_objective_completability(world_with_puzzles)
         if json_ok and rewards_ok and connectivity_ok and objective_ok:
@@ -434,7 +435,8 @@ def create_world_incrementally_generate(language: str, progress_callback=None) -
         
         # Validate and fix puzzle rewards
         rewards_ok, final_world = verify_puzzle_rewards_and_fix(final_world)
-        
+        final_world = place_unplaced_required_items(final_world)
+
         connectivity_ok = verify_location_connectivity(final_world)
         objective_ok = verify_objective_completability(final_world)
         if json_ok and rewards_ok and connectivity_ok and objective_ok:
@@ -717,6 +719,68 @@ def verify_objective_completability(world: GeneratedWorld) -> bool:
     else:
         print(f"[ERROR] Unknown objective type: {obj_type}")
         return False
+
+def place_unplaced_required_items(world: GeneratedWorld) -> GeneratedWorld:
+    """Place items the player needs that the LLM left without a position.
+
+    - Items a character gives go to that character's inventory.
+    - Items required to unblock a passage or requested by a character go to the
+      player's starting location, which is always reachable.
+    Objective items are left untouched: placing them at the start would make the
+    objective trivial, so verify_objective_completability still rejects them.
+    """
+    item_names = {item.name for item in world.items}
+
+    placed_items = set(world.player.inventory)
+    for location in world.locations:
+        placed_items.update(location.items)
+    for character in world.characters:
+        placed_items.update(character.inventory)
+
+    objective_items = {item.name for item in world.items if item.is_objective_target}
+    if world.objective:
+        for component in world.objective.components:
+            component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
+            if component_type.lower() == "item":
+                objective_items.add(component.name)
+
+    def required_item_name(requirement):
+        req_type = requirement.requirement_type.value if hasattr(requirement.requirement_type, 'value') else str(requirement.requirement_type)
+        if req_type.lower() == 'item':
+            return getattr(requirement, 'item_name', None)
+        return None
+
+    # Items given by characters go to the giver's inventory
+    for character in world.characters:
+        given_item = character.interaction.gives_item if character.interaction else None
+        if given_item in item_names and given_item not in placed_items:
+            character.inventory.append(given_item)
+            placed_items.add(given_item)
+            print(f"[INFO] Item '{given_item}' given by '{character.name}' was not placed anywhere. Added it to their inventory")
+
+    # Keys for blocked passages and items requested by characters
+    required_items = []
+    for location in world.locations:
+        for blocked in location.blocked_passages:
+            required_items.append(required_item_name(blocked.required_to_unblock))
+    for character in world.characters:
+        if character.interaction:
+            for requirement in character.interaction.requires:
+                required_items.append(required_item_name(requirement))
+
+    # Same starting location the world builder uses
+    start_location = next((loc for loc in world.locations if loc.name == world.player.location), None)
+    if start_location is None and world.locations:
+        start_location = world.locations[0]
+
+    for item_name in required_items:
+        if (item_name in item_names and item_name not in placed_items
+                and item_name not in objective_items and start_location):
+            start_location.items.append(item_name)
+            placed_items.add(item_name)
+            print(f"[WARNING] Required item '{item_name}' was not placed anywhere. Added it to starting location '{start_location.name}'")
+
+    return world
 
 def verify_puzzle_rewards_and_fix(world: GeneratedWorld) -> tuple[bool, GeneratedWorld]:
     from .structured_data_models import GeneratedItem, ItemReward, ItemActionType
