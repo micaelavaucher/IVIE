@@ -528,21 +528,25 @@ def verify_location_connectivity(world: GeneratedWorld) -> bool:
     if not world.locations or len(world.locations) <= 1:
         return True  # Single or no locations are trivially connected
     
-    # Build adjacency list including both normal and blocked connections
+    # Build adjacency list including both normal and blocked connections.
+    # Edges are added in both directions because create_world_from_llm_response
+    # makes every connection bidirectional, so a missing reverse edge is not an error.
     adjacency = {}
     location_names = set()
-    
+
     for location in world.locations:
         location_names.add(location.name)
-        adjacency[location.name] = set()
-        
+        adjacency.setdefault(location.name, set())
+
         # Add normal connections
         for connected_name in location.connecting_locations:
             adjacency[location.name].add(connected_name)
-        
+            adjacency.setdefault(connected_name, set()).add(location.name)
+
         # Add blocked passages (they're still connections, just blocked)
         for blocked in location.blocked_passages:
             adjacency[location.name].add(blocked.location)
+            adjacency.setdefault(blocked.location, set()).add(location.name)
     
     # Perform DFS from the first location to see if we can reach all others
     start_location = next(iter(location_names))
