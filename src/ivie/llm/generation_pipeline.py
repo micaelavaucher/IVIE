@@ -719,8 +719,8 @@ def verify_objective_completability(world: GeneratedWorld) -> bool:
         return False
 
 def verify_puzzle_rewards_and_fix(world: GeneratedWorld) -> tuple[bool, GeneratedWorld]:
-    from .structured_data_models import GeneratedItem, ItemReward
-    
+    from .structured_data_models import GeneratedItem, ItemReward, ItemActionType
+
     # Track changes made
     items_created = []
     
@@ -740,6 +740,7 @@ def verify_puzzle_rewards_and_fix(world: GeneratedWorld) -> tuple[bool, Generate
                     # Create the missing item
                     new_item = GeneratedItem(
                         name=item_name,
+                        action_type=ItemActionType.LORE,  # required field; not used by the game engine
                         descriptions=[f"A {item_name.lower()} obtained as a reward for solving puzzles."],
                         gettable=True,
                         is_objective_target=False,
