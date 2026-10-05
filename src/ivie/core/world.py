@@ -272,6 +272,10 @@ class World:
 
   def check_objective(self) -> bool:
 
+    # A world whose objective could not be built (e.g. a mystery with no valid clues) can never be completed
+    if not self.objective:
+      return False
+
     done = False
     first_component_class = self.objective[0].__class__.__name__
     second_component_class = self.objective[1].__class__.__name__
@@ -284,6 +288,9 @@ class World:
       if self.objective[1] in self.objective[0].inventory: done = True
     elif first_component_class == "Item" and second_component_class == "Location":
       if self.objective[0] in self.objective[1].items: done = True
+    elif first_component_class == "Item" and second_component_class == "Character":
+      # DELIVER_AN_ITEM to a character: done when the character holds the item
+      if self.objective[0] in self.objective[1].inventory: done = True
     elif second_component_class == "MysteryObjective":
       # Check if mystery objective is completed
       mystery_obj = self.objective[1]
