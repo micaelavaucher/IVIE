@@ -29,6 +29,19 @@ The `config.ini` file is used to load the configuration options for the game.
 
 In the current version, the system can be used both in English ('en') and Spanish ('es').
 
+Generation speed is controlled by two sections:
+
+- `[Models]`: `ThinkingBudget = 0` turns off the "thinking" of recent Gemini flash models, which otherwise multiplies latency. Any `gemini-*` model name is accepted.
+- `[Generation]`: `Facets` (step 3 as four parallelizable calls merged by `facet_reconciler.py`), `PuzzleStageOnly` (step 4 returns only puzzles and blocked passages) and `Parallel` (run independent calls at the same time). Setting all three to `false` runs the original pipeline.
+
+Every step logs its duration as `[TIMING]` lines in the terminal.
+
+### Tests
+
+```shell
+python -m pytest
+```
+
 ### Web application
 To start the web app, just run 
 ```

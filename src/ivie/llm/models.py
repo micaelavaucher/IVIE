@@ -6,6 +6,7 @@ from google.genai.errors import ServerError
 import replicate
 import os
 import json
+import configparser
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -19,14 +20,27 @@ def get_llm(model_name: str = "gemini-2.0-flash") -> object:
 
     model = None
 
-    if model_name in google_models:
-        model = GeminiModel(model_name=model_name)
+    # Gemini model versions are retired regularly, so any gemini-* name is accepted
+    if model_name in google_models or model_name.startswith("gemini-"):
+        model = GeminiModel(model_name=model_name, thinking_budget=get_thinking_budget())
     elif model_name in replicate_models:
         model = ReplicateModel(API_key="REPLICATE_API_TOKEN", model_name=model_name)
     elif model_name in openai_models:
         model = OpenAIModel(model_name=model_name)
 
     return model
+
+
+def get_thinking_budget():
+    """[Models] ThinkingBudget from config.ini, or None to use the model's default.
+
+    Recent Gemini flash models think before answering by default, which multiplies latency
+    (about 12s instead of 3s for the concept step). 0 turns thinking off.
+    """
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    value = config.get('Models', 'ThinkingBudget', fallback='').strip()
+    return int(value) if value else None
 
 
 class ReplicateModel():
@@ -52,11 +66,12 @@ class ReplicateModel():
         return "".join(output)
 
 class GeminiModel():
-    def __init__ (self, model_name:str = "gemini-2.0-flash") -> None:
+    def __init__ (self, model_name:str = "gemini-2.0-flash", thinking_budget: int = None) -> None:
         
         self.api_key = os.getenv("GEMINI_API_KEY")
         self.client = genai.Client(api_key=self.api_key)
         self.model_name = model_name
+        self.thinking_config = types.ThinkingConfig(thinking_budget=thinking_budget) if thinking_budget is not None else None
 
     def prompt_model(self, system_msg: str, user_msg: str, retry_attempts: int = 3, delay_seconds: int = 2) -> str:
         
@@ -70,6 +85,7 @@ class GeminiModel():
                         temperature=0.7,
                         top_p=0.9,
                         max_output_tokens=6144,
+                        thinking_config=self.thinking_config,
                     ),
                 )
                 
@@ -107,6 +123,7 @@ class GeminiModel():
                         top_p=0.9,
                         max_output_tokens=8192,
                         response_schema=response_schema,
+                        thinking_config=self.thinking_config,
                     ),
                 )
                 
