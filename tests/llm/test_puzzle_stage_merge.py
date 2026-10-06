@@ -1,0 +1,127 @@
+"""Tests for merge_puzzle_stage: step 4 adds puzzles and blocks without rewriting the world."""
+
+from src.ivie.llm.facet_reconciler import merge_puzzle_stage
+from src.ivie.llm.structured_data_models import (
+    BlockedPassage,
+    BlockedPassageAddition,
+    ComponentType,
+    GeneratedCharacter,
+    GeneratedItem,
+    GeneratedLocation,
+    GeneratedObjective,
+    GeneratedPuzzle,
+    GeneratedWorld,
+    ItemActionType,
+    ItemRequirement,
+    ItemReward,
+    ObjectiveComponent,
+    ObjectiveType,
+    PassageReward,
+    PuzzleRequirement,
+    PuzzleStageResult,
+)
+
+
+def _world(items_in_hall=(), mira_inventory=(), items=("Gem", "Key")):
+    return GeneratedWorld(
+        locations=[
+            GeneratedLocation(name="Hall", descriptions=["d"], items=list(items_in_hall), connecting_locations=["Vault"]),
+            GeneratedLocation(name="Vault", descriptions=["d"], connecting_locations=["Hall"]),
+        ],
+        items=[GeneratedItem(name=name, action_type=ItemActionType.LORE, descriptions=["d"]) for name in items],
+        characters=[GeneratedCharacter(name="Mira", descriptions=["d"], location="Hall", inventory=list(mira_inventory))],
+        puzzles=[],
+        player=GeneratedCharacter(name="Player", descriptions=["d"], location="Hall"),
+        objective=GeneratedObjective(
+            type=ObjectiveType.REACH_LOCATION,
+            components=[ObjectiveComponent(name="Vault", component_type=ComponentType.LOCATION, role_in_objective="goal")],
+            description="Reach the vault", success_conditions=["there"]),
+        dependency_chains=[], world_theme="t", narrative_context="n",
+    )
+
+
+def _puzzle(name="Riddle", proposer=None, rewards=None, location=None):
+    return GeneratedPuzzle(
+        name=name, puzzle_type="riddle", descriptions=["d"], problem="p", answer="a",
+        location=location, proposed_by_character=proposer, rewards=rewards or [],
+        relevance_to_objective="r", hint="h")
+
+
+def _block(to="Vault", requirement=None):
+    return BlockedPassageAddition(from_location="Hall", passage=BlockedPassage(
+        location=to, obstacle_name="Door", obstacle_description="Shut",
+        required_to_unblock=requirement or PuzzleRequirement(description="solve", puzzle_name="Riddle"),
+        relevance_to_objective="r"))
+
+
+def test_world_is_carried_over_and_puzzles_added():
+    world = _world(items_in_hall=["Key"])
+    merged, report = merge_puzzle_stage(world, PuzzleStageResult(puzzles=[_puzzle()], blocked_passage_additions=[_block()]))
+
+    assert [p.name for p in merged.puzzles] == ["Riddle"]
+    assert [b.location for b in merged.locations[0].blocked_passages] == ["Vault"]
+    assert merged.locations[0].items == ["Key"]
+    assert world.puzzles == []  # the input world is not mutated
+
+
+def test_proposes_puzzle_is_derived_from_the_puzzle():
+    merged, _ = merge_puzzle_stage(_world(mira_inventory=["Gem"]), PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira", rewards=[ItemReward(description="d", item_name="Gem")])]))
+
+    mira = merged.characters[0]
+    assert mira.interaction is not None
+    assert mira.interaction.proposes_puzzle == "Riddle"
+
+
+def test_reward_lying_elsewhere_moves_to_the_proposer():
+    merged, report = merge_puzzle_stage(_world(items_in_hall=["Gem"]), PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira", rewards=[ItemReward(description="d", item_name="Gem")])]))
+
+    assert merged.characters[0].inventory == ["Gem"]
+    assert merged.locations[0].items == []
+    assert any("moved to their inventory" in m for m in report.repairs)
+
+
+def test_extra_puzzles_are_dropped_with_the_blocks_that_need_them():
+    stage = PuzzleStageResult(
+        puzzles=[_puzzle("Riddle"), _puzzle("Second")],
+        blocked_passage_additions=[_block(requirement=PuzzleRequirement(description="s", puzzle_name="Second"))])
+    merged, report = merge_puzzle_stage(_world(), stage, max_puzzles=1)
+
+    assert [p.name for p in merged.puzzles] == ["Riddle"]
+    assert merged.locations[0].blocked_passages == []
+
+
+def test_puzzle_in_unknown_location_is_dropped():
+    merged, report = merge_puzzle_stage(_world(), PuzzleStageResult(puzzles=[_puzzle(location="Atlantis")]))
+
+    assert merged.puzzles == []
+    assert any("non-existent" in m for m in report.repairs)
+
+
+def test_passage_reward_between_unknown_locations_is_dropped():
+    reward = PassageReward(description="d", from_location="Hall", to_location="Atlantis")
+    merged, report = merge_puzzle_stage(_world(), PuzzleStageResult(puzzles=[_puzzle(rewards=[reward])]))
+
+    assert merged.puzzles[0].rewards == []
+
+
+def test_block_with_an_unknown_key_is_dropped():
+    stage = PuzzleStageResult(puzzles=[_puzzle()], blocked_passage_additions=[
+        _block(requirement=ItemRequirement(description="k", item_name="Skeleton Key"))])
+    merged, report = merge_puzzle_stage(_world(), stage)
+
+    assert merged.locations[0].blocked_passages == []
+    assert any("would not be enforced" in m for m in report.repairs)
+
+
+def test_keys_and_rewards_are_made_gettable():
+    world = _world(items_in_hall=["Key"], mira_inventory=["Gem"])
+    for item in world.items:
+        item.gettable = False
+    stage = PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira", rewards=[ItemReward(description="d", item_name="Gem")])],
+        blocked_passage_additions=[_block(requirement=ItemRequirement(description="k", item_name="Key"))])
+    merged, _ = merge_puzzle_stage(world, stage)
+
+    assert all(item.gettable for item in merged.items)

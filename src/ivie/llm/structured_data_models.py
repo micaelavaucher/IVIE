@@ -250,6 +250,39 @@ class WorldSkeleton(BaseModel):
     key_items: List[KeyEntity] = Field(description="Key items that will be important for the objective")
     key_characters: List[KeyEntity] = Field(description="Key characters that will interact with the player")
 
+#---- Facet Models (step 3 split into independent calls) ---------------------
+# Each facet owns one slice of the world. All four receive the same name roster from the
+# skeleton, so they can run concurrently; facet_reconciler merges them into a GeneratedWorld.
+class WorldLocationsFacet(BaseModel):
+    """Locations with descriptions, connections, the items lying in them and blocked passages."""
+    locations: List[GeneratedLocation] = Field(description="All locations in the world, using exactly the names from the list")
+
+class WorldItemsFacet(BaseModel):
+    """Item details only. Where each item is placed is decided by the locations and characters facets."""
+    items: List[GeneratedItem] = Field(description="All items in the world, using exactly the names from the list")
+
+class WorldCharactersFacet(BaseModel):
+    """Non-player characters (placed in locations, holding their starting items) and the player."""
+    characters: List[GeneratedCharacter] = Field(description="All non-player characters, using exactly the names from the list")
+    player: GeneratedCharacter = Field(description="The player character, placed at the location where the adventure starts")
+
+class WorldObjectiveFacet(BaseModel):
+    """The main objective plus the framing prose."""
+    objective: GeneratedObjective = Field(description="The main objective. All components must use exact names from the lists")
+    world_theme: str = Field(description="Overall theme or setting of the world")
+    narrative_context: str = Field(description="Background story that explains why everything is connected")
+
+#---- Puzzle Stage Models (step 4 returns only what it adds) -----------------
+class BlockedPassageAddition(BaseModel):
+    """A passage to block, starting from an existing location."""
+    from_location: str = Field(description="Location the blocked passage starts from. Note: this location must exist in the world")
+    passage: BlockedPassage = Field(description="The blocked passage. Its required_to_unblock must be an item that exists or a puzzle you are creating")
+
+class PuzzleStageResult(BaseModel):
+    """Output of step 4: only new puzzles and new blocked passages, merged into the world in code."""
+    puzzles: List[GeneratedPuzzle] = Field(description="The new puzzles")
+    blocked_passage_additions: List[BlockedPassageAddition] = Field(default=[], description="Passages to block so the puzzles have something to unlock")
+
 #---- Expansion Models -------------------------------------------------------
 class WorldExpansion(BaseModel):
     """Model for expanding existing worlds with new connected areas."""
