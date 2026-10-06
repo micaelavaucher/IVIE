@@ -1294,15 +1294,17 @@ class World:
       for reward in puzzle.rewards:
           try:
               if hasattr(reward, 'reward_type'):
+                  # RewardType values are lowercase ("item", "passage"); compare without case
+                  reward_type = str(getattr(reward.reward_type, 'value', reward.reward_type)).upper()
                   # Special handling for observation puzzles where the reward is finding the item
-                  if puzzle.puzzle_type == "observation" and reward.reward_type == "ITEM":
+                  if puzzle.puzzle_type == "observation" and reward_type == "ITEM":
                       item = self._find_item_case_insensitive(reward.item_name)
                       if item and item in self.player.location.items:
                           self.player.save_item(item, self.player.location)
                           print(f"[INFO] Player found observation reward item '{item.name}' in location.")
                           continue # Move to next reward
 
-                  if reward.reward_type == "ITEM" and hasattr(reward, 'item_name'):
+                  if reward_type == "ITEM" and hasattr(reward, 'item_name'):
                       # Give item to player - case insensitive search
                       item = self._find_item_case_insensitive(reward.item_name)
                       if item:
@@ -1323,7 +1325,7 @@ class World:
                                       # No need to set owner_found=True, as we break immediately
                                       break # Exit location loop once found and transferred
                   
-                  elif reward.reward_type == "PASSAGE" and hasattr(reward, 'from_location') and hasattr(reward, 'to_location'):
+                  elif reward_type == "PASSAGE" and hasattr(reward, 'from_location') and hasattr(reward, 'to_location'):
                       # Unblock passage - case insensitive search
                       from_loc = self._find_location_case_insensitive(reward.from_location)
                       to_loc = self._find_location_case_insensitive(reward.to_location)
