@@ -7,8 +7,11 @@ and game-related utility functions with intelligent memory integration.
 import re
 import jsonpickle
 import time
+from concurrent.futures import ThreadPoolExecutor
 import streamlit as st
 
+from ..llm.generation_pipeline import get_generation_flags
+from ..llm.models import get_llm
 from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured, prompt_describe_objective
 from .world_builder import generate_world_overview, generate_objective_validation_report
 from .world_utils import create_world_state_summary
@@ -17,6 +20,7 @@ from ..llm.memory_system import create_memory_system
 from ..database.mongodb_handler import db_handler
 
 def generate_starting_narration(world, language, narrative_model):
+    started = time.perf_counter()
     system_msg_current_scene, user_msg_current_scene = prompt_narrate_current_scene(
         world.render_world(language=language),
         previous_narrations=world.player.visited_locations[world.player.location.name],
@@ -24,12 +28,30 @@ def generate_starting_narration(world, language, narrative_model):
         starting_scene=True,
     )
 
+    # The objective narration does not depend on the scene narration, so with the Parallel option
+    # both calls run at once (the second one with its own client)
+    has_objective = hasattr(world, 'objective') and world.objective
+    objective_executor = None
+    objective_future = None
+    if has_objective:
+        system_msg_objective, user_msg_objective = prompt_describe_objective(world.objective, language=language)
+        if get_generation_flags()['parallel']:
+            objective_model = get_llm(narrative_model.model_name) if hasattr(narrative_model, 'model_name') else None
+            objective_executor = ThreadPoolExecutor(max_workers=1)
+            objective_future = objective_executor.submit(
+                (objective_model or narrative_model).prompt_model,
+                system_msg=system_msg_objective, user_msg=user_msg_objective,
+            )
+
     starting_narration = narrative_model.prompt_model(system_msg=system_msg_current_scene, user_msg=user_msg_current_scene)
     world.player.visited_locations[world.player.location.name] += [starting_narration]
 
-    if hasattr(world, 'objective') and world.objective:
-        system_msg_objective, user_msg_objective = prompt_describe_objective(world.objective, language=language)
-        narrated_objective = narrative_model.prompt_model(system_msg=system_msg_objective, user_msg=user_msg_objective)
+    if has_objective:
+        if objective_future is not None:
+            narrated_objective = objective_future.result()
+            objective_executor.shutdown()
+        else:
+            narrated_objective = narrative_model.prompt_model(system_msg=system_msg_objective, user_msg=user_msg_objective)
         try:
             if narrated_objective:
                 objective_texts = re.findall(r'#([^#]*?)#', str(narrated_objective))
@@ -58,6 +80,7 @@ def generate_starting_narration(world, language, narrative_model):
 
     world_state_formatted = world.format_world_state_for_chat(language=language)
     starting_narration += f"\n\n---\n{world_state_formatted}"
+    print(f"[TIMING] Narración inicial: {time.perf_counter() - started:.1f}s")
     return starting_narration
 
 def create_game_log_entry(language, narrative_model_name, reasoning_model_name, world_id=None, inspiration=""):
