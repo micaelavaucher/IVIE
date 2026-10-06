@@ -163,3 +163,50 @@ def test_full_pipeline_with_the_new_options(monkeypatch, fake_model):
     assert len(world.locations) == 4 and len(world.puzzles) == 1
     assert [m[:1] for m in messages if m[:1] in "📝🦴🌍🧩"] == ["📝", "🦴", "🌍", "🧩"]
     assert "GeneratedWorld" not in fake_model.prompts  # the old whole-world calls are not made
+
+
+def _puzzles_rewarding(item_name):
+    puzzles = {**PUZZLES, "puzzles": [dict(PUZZLES["puzzles"][0])]}
+    puzzles["puzzles"][0]["rewards"] = [{"reward_type": "item", "description": "d", "item_name": item_name}]
+    return puzzles
+
+
+def _world_with_player_holding(item_name, fake_model):
+    world = facet_pipeline.generate_world_facets(CONCEPT, SKELETON, "es", "fake", parallel=False)
+    for location in world.locations:
+        location.items = [name for name in location.items if name != item_name]
+    for character in world.characters:
+        character.inventory = [name for name in character.inventory if name != item_name]
+    world.player.inventory = [item_name]
+    return world
+
+
+def test_a_reward_the_player_already_has_gets_one_retry(fake_model):
+    world = _world_with_player_holding("Vela", fake_model)
+    fake_model.first_responses["PuzzleStageResult"] = _puzzles_rewarding("Vela")
+
+    result = facet_pipeline.run_puzzle_stage(world, "es", fake_model, (1, 1))
+
+    prompts = fake_model.prompts["PuzzleStageResult"]
+    assert len(prompts) == 2
+    assert "already carries from the start" in prompts[1]
+    assert result.puzzles[0].rewards[0].item_name == "Mapa"
+
+
+def test_a_minor_issue_is_accepted_when_the_retry_is_worse(fake_model):
+    world = _world_with_player_holding("Vela", fake_model)
+
+    class Sequence:
+        def __init__(self):
+            self.responses = [_puzzles_rewarding("Vela"), None, None]
+            self.prompts = []
+
+        def prompt_model_structured(self, prompt, schema):
+            self.prompts.append(prompt)
+            return self.responses.pop(0)
+
+    model = Sequence()
+    result = facet_pipeline.run_puzzle_stage(world, "es", model, (1, 1))
+
+    assert len(model.prompts) == 2
+    assert result.puzzles[0].rewards[0].item_name == "Vela"

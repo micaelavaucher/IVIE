@@ -228,6 +228,51 @@ def _force_gettable(items, required: dict, report) -> None:
             report.repair(f"item '{item.name}' was not gettable but {required[item.name]}; made gettable")
 
 
+def align_mystery_clues(objective, locations, characters, item_names, report) -> None:
+    """Point every mystery clue at where its item actually is.
+
+    The objective facet writes "clue item X is in location Y", but placement is settled elsewhere,
+    and character-inventory-wins (or the puzzle stage giving a reward to its proposer) routinely
+    moves X into an NPC's hands. world_builder accepts a clue only if the item is genuinely in the
+    named location, so a stale item_location silently invalidated every clue - and a mystery with
+    no valid clues builds NO OBJECTIVE AT ALL.
+    """
+    held_by = {}
+    for character in characters:
+        for item_name in character.inventory:
+            held_by.setdefault(item_name, character.name)
+    lying_in = {}
+    for location in locations:
+        for item_name in location.items:
+            lying_in.setdefault(item_name, location.name)
+
+    for clue in getattr(objective, 'mystery_clues', None) or []:
+        if clue.associated_item not in item_names:
+            report.repair(
+                f"mystery clue '{clue.name}' names unknown item '{clue.associated_item}'; "
+                f"it will be dropped when the world is built"
+            )
+            continue
+
+        holder = held_by.get(clue.associated_item)
+        actual_location = lying_in.get(clue.associated_item)
+        if holder is not None:
+            if clue.item_location:
+                # Clearing it is what saves the clue: the builder accepts a clue with no
+                # item_location, but rejects one naming a location the item is not in.
+                report.repair(
+                    f"mystery clue '{clue.name}' said '{clue.associated_item}' was in "
+                    f"'{clue.item_location}', but {holder} holds it; cleared item_location"
+                )
+                clue.item_location = None
+        elif actual_location is not None and clue.item_location != actual_location:
+            report.repair(
+                f"mystery clue '{clue.name}' said '{clue.associated_item}' was in "
+                f"'{clue.item_location}', but it is in '{actual_location}'; corrected"
+            )
+            clue.item_location = actual_location
+
+
 def reconcile_world_facets(
     locations_facet: WorldLocationsFacet,
     items_facet: WorldItemsFacet,
@@ -437,35 +482,7 @@ def reconcile_world_facets(
         )
 
     # --- Mystery clues must agree with where items actually ended up ---------------------
-    # The objective facet writes "clue item X is in location Y", but placement is settled above,
-    # and character-inventory-wins routinely moves X into an NPC's hands. world_builder accepts a
-    # clue only if the item is genuinely in the named location, so a stale item_location silently
-    # invalidated every clue - and a mystery with no valid clues builds NO OBJECTIVE AT ALL.
-    for clue in getattr(objective, 'mystery_clues', None) or []:
-        if clue.associated_item not in item_names:
-            report.repair(
-                f"mystery clue '{clue.name}' names unknown item '{clue.associated_item}'; "
-                f"it will be dropped when the world is built"
-            )
-            continue
-
-        holder = claimed_by_character.get(clue.associated_item)
-        actual_location = placed_in_location.get(clue.associated_item)
-        if holder is not None:
-            if clue.item_location:
-                # Clearing it is what saves the clue: the builder accepts a clue with no
-                # item_location, but rejects one naming a location the item is not in.
-                report.repair(
-                    f"mystery clue '{clue.name}' said '{clue.associated_item}' was in "
-                    f"'{clue.item_location}', but {holder} holds it; cleared item_location"
-                )
-                clue.item_location = None
-        elif actual_location is not None and clue.item_location != actual_location:
-            report.repair(
-                f"mystery clue '{clue.name}' said '{clue.associated_item}' was in "
-                f"'{clue.item_location}', but it is in '{actual_location}'; corrected"
-            )
-            clue.item_location = actual_location
+    align_mystery_clues(objective, locations, characters, item_names, report)
 
     # --- The objective must not be complete before the first move ------------------------
     _avoid_trivial_objective(objective, player, characters, locations, report)
@@ -544,8 +561,6 @@ def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None
             dangling.append(f"location '{puzzle.location}'")
         if puzzle.proposed_by_character is not None and puzzle.proposed_by_character not in character_names:
             dangling.append(f"character '{puzzle.proposed_by_character}'")
-        if puzzle.proposed_by_location is not None and puzzle.proposed_by_location not in location_names:
-            dangling.append(f"proposing location '{puzzle.proposed_by_location}'")
 
         if dangling:
             # A puzzle that lives somewhere that does not exist can never be found by the player
@@ -553,6 +568,13 @@ def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None
             continue
 
         puzzle = puzzle.model_copy(deep=True)
+        # Despite its name, the engine reads proposed_by_location as the name of an ITEM: examining
+        # that item proposes the puzzle (World.find_puzzle_proposed_by_location). Anything else
+        # never triggers, so it is cleared rather than costing the whole puzzle.
+        if puzzle.proposed_by_location is not None and puzzle.proposed_by_location not in item_names:
+            report.repair(f"puzzle '{puzzle.name}' is proposed by '{puzzle.proposed_by_location}', which is "
+                          f"not an item; cleared proposed_by_location")
+            puzzle.proposed_by_location = None
         kept_rewards = []
         for reward in puzzle.rewards:
             if isinstance(reward, PassageReward) and (
@@ -680,5 +702,8 @@ def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None
             if isinstance(reward, ItemReward):
                 must_be_gettable.setdefault(reward.item_name, f"it is the reward of '{puzzle.name}'")
     _force_gettable(world.items, must_be_gettable, report)
+
+    # Rewards moved above may hold mystery clue items
+    align_mystery_clues(world.objective, world.locations, world.characters, item_names, report)
 
     return world, report

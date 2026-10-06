@@ -228,7 +228,7 @@ def PROMPT_FACET_CHARACTERS(concept, skeleton, language: str = 'es', previous_er
 2. **Inventarios válidos**: todo objeto en `inventory` DEBE ser el nombre exacto de un objeto de la lista
 3. **Interacciones funcionales**: si un personaje tiene `interaction`, DEBE tener `interaction_text`
 4. **REGLA LÓGICA CRÍTICA**: si un personaje lleva un objeto o tiene la solución necesaria para desbloquear un pasaje, NO PUEDE estar en la ubicación que está detrás de ese mismo pasaje, ni en ninguna accesible únicamente a través de él
-5. **El jugador**: colócalo en la ubicación donde empieza la aventura, con un inventario inicial normalmente vacío
+5. **El jugador**: colócalo en la ubicación donde empieza la aventura, con el inventario inicial VACÍO: los objetos se consiguen explorando e interactuando
 
 IMPORTANTE: las interacciones deben ser directas y simples pero COMPLETAS. Todavía no hay puzzles: no rellenes `proposes_puzzle`, eso se añadirá en un paso posterior.
 {_language_instruction(language)}"""
@@ -250,7 +250,7 @@ IMPORTANTE: las interacciones deben ser directas y simples pero COMPLETAS. Todav
 2. **Valid inventories**: every item in `inventory` MUST be the exact name of an item from the list
 3. **Functional interactions**: if a character has an `interaction`, it MUST have `interaction_text`
 4. **CRITICAL LOGIC RULE**: if a character holds an item or the solution needed to unlock a passage, they CANNOT be placed in the location behind that very passage, nor in any location reachable only through it
-5. **The player**: place them where the adventure begins, with a normally empty starting inventory
+5. **The player**: place them where the adventure begins, with an EMPTY starting inventory: items are obtained by exploring and interacting
 
 IMPORTANT: interactions should be direct and simple but COMPLETE. There are no puzzles yet: do not fill in `proposes_puzzle`, that is added in a later step.
 {_language_instruction(language)}"""
@@ -391,6 +391,9 @@ Objetivo: Conseguir el Amuleto Mágico
 4. **Si el puzzle lo propone un personaje**, la recompensa debe ser un objeto que YA ESTÉ EN EL INVENTARIO DE ESE PERSONAJE
 5. **NO CRAFTING**: el motor no soporta crear ni transformar objetos. No pidas al jugador combinar o alterar objetos. Las recompensas son objetos que ya existen y se usan directamente
 6. **OBSTÁCULO vs. LLAVE**: el `obstacle_name` es lo que bloquea el camino (p. ej. "puerta cerrada"); el `required_to_unblock` es la llave que lo quita (p. ej. "llave de hierro"). La llave nunca es el obstáculo. `required_to_unblock` solo puede ser de tipo `item` (un objeto que exista) o `puzzle` (un puzzle que estés creando): el motor no sabe abrir un pasaje de ninguna otra forma
+7. **QUIÉN PROPONE EL PUZZLE**: un puzzle lo propone un personaje (`proposed_by_character`) o un OBJETO que el jugador examina. Para lo segundo usa `proposed_by_location` con el nombre EXACTO de ese OBJETO: a pesar del nombre del campo, NO es una ubicación. La ubicación del puzzle va en `location`
+8. **RESPUESTA CORTA**: `answer` debe ser una palabra o una frase muy breve que el jugador pueda escribir tal cual (ej. "luna", "1885", "el reloj"). El motor compara la respuesta del jugador con este texto, así que una explicación larga hace el puzzle imposible
+9. **RECOMPENSAS NUEVAS**: nunca recompenses con un objeto que el jugador ya lleve en su inventario al empezar, ni bloquees un pasaje con un objeto que ya lleva: lo tendría gratis
 
 **REGLAS OBLIGATORIAS PARA PISTAS:**
 Para CADA puzzle DEBES incluir:
@@ -449,6 +452,9 @@ Objective: Obtain the Magic Amulet
 4. **If a character proposes the puzzle**, the reward must be an item ALREADY IN THAT CHARACTER'S INVENTORY
 5. **NO CRAFTING**: the engine does not support creating or transforming items. Do not ask the player to combine or alter objects. Rewards are existing items used directly
 6. **OBSTACLE vs. KEY**: `obstacle_name` is what blocks the way (e.g. "locked door"); `required_to_unblock` is the key that removes it (e.g. "iron key"). The key is never the obstacle. `required_to_unblock` may ONLY be of type `item` (an existing item) or `puzzle` (a puzzle you are creating): the engine cannot open a passage any other way
+7. **WHO PROPOSES THE PUZZLE**: a puzzle is proposed by a character (`proposed_by_character`) or by an ITEM the player examines. For the latter, put the EXACT name of that ITEM in `proposed_by_location`: despite the field's name, it is NOT a location. The puzzle's location goes in `location`
+8. **SHORT ANSWER**: `answer` must be a single word or a very short phrase the player can type as is (e.g. "moon", "1885", "the clock"). The engine compares the player's answer with this text, so a long explanation makes the puzzle impossible
+9. **NEW REWARDS**: never reward an item the player already carries at the start, and never block a passage with an item they already carry: they would get past it for free
 
 **MANDATORY HINT RULES:**
 For EVERY puzzle you MUST include:

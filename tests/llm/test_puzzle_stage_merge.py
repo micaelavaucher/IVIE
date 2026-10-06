@@ -125,3 +125,38 @@ def test_keys_and_rewards_are_made_gettable():
     merged, _ = merge_puzzle_stage(world, stage)
 
     assert all(item.gettable for item in merged.items)
+
+
+def test_puzzle_proposed_by_an_item_is_kept():
+    puzzle = _puzzle()
+    puzzle.proposed_by_location = "Gem"
+    merged, _ = merge_puzzle_stage(_world(items_in_hall=["Gem"]), PuzzleStageResult(puzzles=[puzzle]))
+
+    assert merged.puzzles[0].proposed_by_location == "Gem"
+
+
+def test_proposed_by_something_that_is_not_an_item_is_cleared_not_dropped():
+    puzzle = _puzzle()
+    puzzle.proposed_by_location = "Vault"   # a location: the engine only matches item names
+    merged, report = merge_puzzle_stage(_world(), PuzzleStageResult(puzzles=[puzzle]))
+
+    assert [p.name for p in merged.puzzles] == ["Riddle"]
+    assert merged.puzzles[0].proposed_by_location is None
+    assert any("not an item" in m for m in report.repairs)
+
+
+def test_clues_follow_a_reward_moved_to_its_proposer():
+    from src.ivie.llm.structured_data_models import MysteryClue
+
+    world = _world(items_in_hall=["Gem"])
+    world.objective = GeneratedObjective(
+        type=ObjectiveType.SOLVE_MYSTERY,
+        components=[ObjectiveComponent(name="Vault", component_type=ComponentType.LOCATION, role_in_objective="g")],
+        description="Who did it", success_conditions=["solved"], mystery_solution="Mira",
+        mystery_clues=[MysteryClue(name="Shine", description="d", associated_item="Gem", item_location="Hall",
+                                   relevance_to_mystery="r")])
+    merged, _ = merge_puzzle_stage(world, PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira", rewards=[ItemReward(description="d", item_name="Gem")])]))
+
+    assert merged.characters[0].inventory == ["Gem"]
+    assert merged.objective.mystery_clues[0].item_location is None

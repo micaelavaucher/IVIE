@@ -114,7 +114,8 @@ def _canonicalize_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> N
 def _canonicalize_puzzle_stage(stage: PuzzleStageResult, roster: NameRoster) -> None:
     for puzzle in stage.puzzles:
         puzzle.location = roster.canonical('location', puzzle.location)
-        puzzle.proposed_by_location = roster.canonical('location', puzzle.proposed_by_location)
+        # The engine reads proposed_by_location as an item name (see merge_puzzle_stage)
+        puzzle.proposed_by_location = roster.canonical('item', puzzle.proposed_by_location)
         puzzle.proposed_by_character = roster.canonical('character', puzzle.proposed_by_character)
         for reward in puzzle.rewards:
             if isinstance(reward, ItemReward):
@@ -299,16 +300,46 @@ def generate_world_facets(concept, skeleton, language, model_name, parallel=True
 
 #---- Puzzle stage --------------------------------------------------------------
 
+def _valid_names_hint(world) -> str:
+    return (f"Valid names - locations: {[l.name for l in world.locations]}; "
+            f"items: {[i.name for i in world.items]}; characters: {[c.name for c in world.characters]}.")
+
+
+def _pointless_challenges(merged, original_world) -> list:
+    """Puzzles and blocks the player gets past for free: rewards or keys already in their hands."""
+    carried = set(original_world.player.inventory)
+    problems = []
+    for puzzle in merged.puzzles:
+        for reward in puzzle.rewards:
+            if isinstance(reward, ItemReward) and reward.item_name in carried:
+                problems.append(f"Puzzle '{puzzle.name}' rewards '{reward.item_name}', which the player already "
+                                f"carries from the start. Reward something the player does not have yet.")
+    existing_blocks = {(l.name, b.location) for l in original_world.locations for b in l.blocked_passages}
+    for location in merged.locations:
+        for blocked in location.blocked_passages:
+            item_name = getattr(blocked.required_to_unblock, 'item_name', None)
+            if (location.name, blocked.location) not in existing_blocks and item_name in carried:
+                problems.append(f"The new block '{location.name}' -> '{blocked.location}' opens with '{item_name}', "
+                                f"which the player already carries, so it would open immediately.")
+    return problems
+
+
 def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
-    """Step 4: add puzzles and blocked passages to a finished world without rewriting it."""
+    """Step 4: add puzzles and blocked passages to a finished world without rewriting it.
+
+    Hard errors (no valid puzzle, broken connectivity or objective) are retried and finally fail
+    the generation. Soft ones (a puzzle or block the player gets past for free) get one retry;
+    the first acceptable result is kept, since a pointless puzzle is not worth failing a world over.
+    """
     min_puzzles, max_puzzles = puzzle_range
     puzzle_count = str(min_puzzles) if min_puzzles == max_puzzles else f"{min_puzzles}-{max_puzzles}"
     world_json = world.model_dump_json(indent=2)
 
     previous_errors = None
+    acceptable = None
     for attempt in range(1, max_attempts + 1):
         started = time.perf_counter()
-        errors = []
+        errors, soft_errors = [], []
         merged = None
         try:
             prompt = facet_prompts.PROMPT_PUZZLE_STAGE(world_json, puzzle_count, language, previous_errors=previous_errors)
@@ -328,6 +359,7 @@ def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
             if len(merged.puzzles) < min_puzzles:
                 errors.append(f"Only {len(merged.puzzles)} valid puzzle(s); create exactly {puzzle_count}.")
                 errors.extend(report.repairs)
+                errors.append(_valid_names_hint(world))
 
             _, merged = verify_puzzle_rewards_and_fix(merged)
             merged = place_unplaced_required_items(merged)
@@ -335,13 +367,24 @@ def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
                 errors.append("The blocked passages left some locations unreachable.")
             if not verify_objective_completability(merged):
                 errors.append("After adding the puzzles, the objective can no longer be completed.")
+            soft_errors = _pointless_challenges(merged, world)
         except Exception as error:
             errors.append(f"Invalid output: {_short(error)}")
 
         print(f"[TIMING] etapa de puzzles (intento {attempt}): {time.perf_counter() - started:.1f}s")
-        if not errors:
+        if not errors and not soft_errors:
             return merged
-        print(f"[WARNING] Puzzle stage rejected on attempt {attempt}: {errors}")
-        previous_errors = errors
+        if not errors:
+            if acceptable is not None:
+                print(f"[WARNING] Puzzle stage accepted with minor issues: {soft_errors}")
+                return merged
+            acceptable = merged
+        elif acceptable is not None:
+            print("[WARNING] Puzzle stage retry failed; keeping the earlier acceptable result")
+            return acceptable
+        print(f"[WARNING] Puzzle stage rejected on attempt {attempt}: {errors + soft_errors}")
+        previous_errors = errors + soft_errors
 
+    if acceptable is not None:
+        return acceptable
     raise ValueError(f"Failed to generate valid puzzles after {max_attempts} attempts: {previous_errors}")
