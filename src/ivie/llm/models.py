@@ -110,7 +110,8 @@ class GeminiModel():
                 
         return "⚠️ El modelo está sobrecargado o no respondió. Por favor, intentá nuevamente."
     
-    def prompt_model_structured(self, prompt: str, response_schema, max_retries: int = 3, delay_seconds: int = 2):
+    def prompt_model_structured(self, prompt: str, response_schema, max_retries: int = 3, delay_seconds: int = 2,
+                                max_output_tokens: int = 8192):
         
         for attempt in range(max_retries):
             try:
@@ -121,7 +122,7 @@ class GeminiModel():
                         temperature=0.7,
                         response_mime_type="application/json",
                         top_p=0.9,
-                        max_output_tokens=8192,
+                        max_output_tokens=max_output_tokens,
                         response_schema=response_schema,
                         thinking_config=self.thinking_config,
                     ),
@@ -249,7 +250,8 @@ class OpenAIModel():
                 
         return "⚠️ The OpenAI model is overloaded or did not respond. Please try again."
 
-    def prompt_model_structured(self, prompt: str, response_schema, max_retries: int = 3, delay_seconds: int = 2):
+    def prompt_model_structured(self, prompt: str, response_schema, max_retries: int = 3, delay_seconds: int = 2,
+                                max_output_tokens: int = 8192):
         for attempt in range(max_retries):
             try:
                 response = self.client.responses.parse(
@@ -259,7 +261,7 @@ class OpenAIModel():
                     ],
                     text_format=response_schema,
                     temperature=self.temperature,
-                    max_output_tokens=8192,
+                    max_output_tokens=max_output_tokens,
                     top_p=0.9,
                 )
                 

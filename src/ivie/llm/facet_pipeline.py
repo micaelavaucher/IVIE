@@ -22,6 +22,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from . import facet_prompts
 from .facet_reconciler import reconcile_world_facets, merge_puzzle_stage, _distances_from
 from .generation_pipeline import (
+    FACET_OUTPUT_TOKENS,
     verify_location_connectivity,
     verify_objective_completability,
     verify_puzzle_rewards_and_fix,
@@ -200,7 +201,8 @@ def _run_facet(model_name, label, build_prompt, facet_class, canonicalize, verif
     for attempt in range(1, max_attempts + 1):
         started = time.perf_counter()
         try:
-            response = model.prompt_model_structured(build_prompt(previous_errors), facet_class)
+            response = model.prompt_model_structured(build_prompt(previous_errors), facet_class,
+                                                     max_output_tokens=FACET_OUTPUT_TOKENS)
             facet = _coerce(response, facet_class)
             canonicalize(facet)
             errors = verify(facet)
@@ -343,7 +345,8 @@ def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
         merged = None
         try:
             prompt = facet_prompts.PROMPT_PUZZLE_STAGE(world_json, puzzle_count, language, previous_errors=previous_errors)
-            stage = _coerce(model.prompt_model_structured(prompt, PuzzleStageResult), PuzzleStageResult)
+            response = model.prompt_model_structured(prompt, PuzzleStageResult, max_output_tokens=FACET_OUTPUT_TOKENS)
+            stage = _coerce(response, PuzzleStageResult)
 
             roster = NameRoster(
                 location=[location.name for location in world.locations],

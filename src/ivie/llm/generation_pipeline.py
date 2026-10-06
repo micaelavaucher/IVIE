@@ -17,6 +17,12 @@ from ..config import load_config, get_model_names
 import configparser
 import time
 
+# Output caps for the small structured calls. A normal answer is far below them; the cap matters
+# when the model falls into a repetition loop, which otherwise runs to 8192 tokens (~30s) before
+# the truncated JSON is retried.
+SMALL_OUTPUT_TOKENS = 2048
+FACET_OUTPUT_TOKENS = 4096
+
 #---- Pipeline Functions -----------------------------------------------------
 
 def run_step_1_concept(theme: str, language, model=None) -> WorldConcept:
@@ -26,7 +32,7 @@ def run_step_1_concept(theme: str, language, model=None) -> WorldConcept:
         model = get_llm(reasoning_model_name)
     prompt_text = prompts.PROMPT_STEP_1_CONCEPT_BY_THEME(theme=theme, language=language)
     print(f"[DEBUG] Generating world concept with theme: '{theme}'")
-    concept_response = model.prompt_model_structured(prompt_text, WorldConcept)
+    concept_response = model.prompt_model_structured(prompt_text, WorldConcept, max_output_tokens=SMALL_OUTPUT_TOKENS)
 
     if isinstance(concept_response, dict):
         concept = WorldConcept(**concept_response)
@@ -47,7 +53,7 @@ def run_step_1_generate_concept(language, model=None) -> WorldConcept:
         model = get_llm(reasoning_model_name)
     prompt_text = prompts.PROMPT_STEP_1_CONCEPT(language=language)
     print(f"[DEBUG] Generating a new world concept")
-    concept_response = model.prompt_model_structured(prompt_text, WorldConcept)
+    concept_response = model.prompt_model_structured(prompt_text, WorldConcept, max_output_tokens=SMALL_OUTPUT_TOKENS)
 
     if isinstance(concept_response, dict):
         concept = WorldConcept(**concept_response)
@@ -75,7 +81,7 @@ def run_step_2_skeleton(concept: WorldConcept, language, model=None) -> WorldSke
     )
     
     print(f"[DEBUG] Generating skeleton from concept: {concept.title}")
-    skeleton_response = model.prompt_model_structured(prompt_text, WorldSkeleton)
+    skeleton_response = model.prompt_model_structured(prompt_text, WorldSkeleton, max_output_tokens=SMALL_OUTPUT_TOKENS)
     
     if isinstance(skeleton_response, dict):
         skeleton = WorldSkeleton(**skeleton_response)

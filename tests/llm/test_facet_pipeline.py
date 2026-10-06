@@ -62,7 +62,7 @@ class FakeModel:
         self.prompts = {}
         self.lock = threading.Lock()
 
-    def prompt_model_structured(self, prompt, schema):
+    def prompt_model_structured(self, prompt, schema, **kwargs):
         name = schema.__name__
         with self.lock:
             self.prompts.setdefault(name, []).append(prompt)
@@ -124,7 +124,7 @@ def test_names_are_rewritten_to_the_roster_spelling(monkeypatch):
 
 def test_a_facet_that_never_validates_fails_the_generation(monkeypatch):
     class AlwaysBad(FakeModel):
-        def prompt_model_structured(self, prompt, schema):
+        def prompt_model_structured(self, prompt, schema, **kwargs):
             if schema.__name__ == "WorldObjectiveFacet":
                 with self.lock:
                     self.prompts.setdefault("WorldObjectiveFacet", []).append(prompt)
@@ -201,7 +201,7 @@ def test_a_minor_issue_is_accepted_when_the_retry_is_worse(fake_model):
             self.responses = [_puzzles_rewarding("Vela"), None, None]
             self.prompts = []
 
-        def prompt_model_structured(self, prompt, schema):
+        def prompt_model_structured(self, prompt, schema, **kwargs):
             self.prompts.append(prompt)
             return self.responses.pop(0)
 
