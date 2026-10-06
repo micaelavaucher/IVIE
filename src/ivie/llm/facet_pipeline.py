@@ -156,8 +156,12 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
     for component in objective.components:
         kind = _enum_value(component.component_type)
         if component.name not in roster.names(kind):
+            # List the valid names: the concept often centres on someone the skeleton left out
+            # (a kidnapped scientist, say), and without the list the model repeats the same name
             errors.append(f"Objective component '{component.name}' is not a {kind} from the list. "
-                          f"Use the exact name of an existing {kind}.")
+                          f"Valid {kind} names: {sorted(roster.names(kind))}. If the goal involves something "
+                          f"that is not on the lists, build the objective around an element that is, "
+                          f"or choose another objective type.")
         components.setdefault(kind, []).append(component.name)
 
     if objective_type == 'solve_mystery':
@@ -167,7 +171,8 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
         clue_items = [clue.associated_item for clue in clues]
         unknown = [name for name in clue_items if name not in roster.names('item')]
         if unknown:
-            errors.append(f"Mystery clues name items that are not in the item list: {unknown}.")
+            errors.append(f"Mystery clues name items that are not in the item list: {unknown}. "
+                          f"Valid item names: {sorted(roster.names('item'))}.")
         duplicates = sorted({name for name in clue_items if clue_items.count(name) > 1})
         if duplicates:
             errors.append(f"Several clues share the same associated_item {duplicates}; "

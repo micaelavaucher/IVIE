@@ -210,3 +210,17 @@ def test_a_minor_issue_is_accepted_when_the_retry_is_worse(fake_model):
 
     assert len(model.prompts) == 2
     assert result.puzzles[0].rewards[0].item_name == "Vela"
+
+
+def test_an_unknown_objective_component_is_reported_with_the_valid_names():
+    from src.ivie.llm.name_matching import NameRoster
+    from src.ivie.llm.structured_data_models import WorldObjectiveFacet
+
+    roster = NameRoster(location=[], item=[], character=["Capitán Dubois", "Madame Evangeline"])
+    facet = WorldObjectiveFacet.model_validate({**OBJECTIVE, "objective": {
+        **OBJECTIVE["objective"], "type": "find_character",
+        "components": [{"name": "Dr. Alistair Finch", "component_type": "character", "role_in_objective": "g"}]}})
+
+    errors = facet_pipeline._verify_objective(facet, roster)
+
+    assert "['Capitán Dubois', 'Madame Evangeline']" in errors[0]
