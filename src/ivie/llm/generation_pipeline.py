@@ -15,6 +15,7 @@ from .models import get_llm
 from . import prompts
 from ..config import load_config, get_model_names
 import configparser
+import time
 
 #---- Pipeline Functions -----------------------------------------------------
 
@@ -176,32 +177,72 @@ def run_step_4_puzzles(world_data: GeneratedWorld, language, model=None) -> Gene
             print(f"      " + "\n      ".join([f"- {hint}" for hint in puzzle.puzzle_hints]))
     return enhanced_world
 
-def create_world_incrementally(theme: str, language: str, progress_callback=None) -> GeneratedWorld:
-    print(f"⚙️ Iniciando generación incremental del mundo con tema: '{theme}'")
-    
-    # Get model from config once
+def _report(progress_callback, message: str) -> None:
+    print(message)
+    if progress_callback:
+        progress_callback(message)
+
+def _log_timing(label: str, since: float) -> None:
+    print(f"[TIMING] {label}: {time.perf_counter() - since:.1f}s")
+
+def _parse_range(value):
+    if '-' in value:
+        return tuple(map(int, value.split('-')))
+    return int(value), int(value)
+
+def get_generation_flags(config=None) -> dict:
+    """Options of the faster pipeline ([Generation] in config.ini). Missing options keep the original pipeline."""
+    config = config or load_config()
+    return {
+        'facets': config.getboolean('Generation', 'Facets', fallback=False),
+        'puzzle_stage_only': config.getboolean('Generation', 'PuzzleStageOnly', fallback=False),
+        'parallel': config.getboolean('Generation', 'Parallel', fallback=False),
+    }
+
+def _get_generation_model():
     config = load_config()
     reasoning_model_name, _ = get_model_names(config)
     model = get_llm(reasoning_model_name)
     print(f"🤖 Using model for world generation: {reasoning_model_name}")
-    
+    return model, reasoning_model_name
+
+def create_world_incrementally(theme: str, language: str, progress_callback=None) -> GeneratedWorld:
+    print(f"⚙️ Iniciando generación incremental del mundo con tema: '{theme}'")
+    started = time.perf_counter()
+    model, model_name = _get_generation_model()
+
     # Paso 1: Generar el concepto general
-    step_msg = "📝 Paso 1: Generando concepto del mundo..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
+    _report(progress_callback, "📝 Paso 1: Generando concepto del mundo...")
+    step_started = time.perf_counter()
     concept = run_step_1_concept(theme, language, model)
-    completion_msg = f"✅ Concepto creado: '{concept.title}'"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-    
-    # Paso 2: Crear el esqueleto con entidades clave (with verification)
-    step_msg = "🦴 Paso 2: Creando esqueleto del mundo..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
+    _log_timing("Paso 1 (concepto)", step_started)
+    _report(progress_callback, f"✅ Concepto creado: '{concept.title}'")
+
+    return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
+
+def create_world_incrementally_generate(language: str, progress_callback=None) -> GeneratedWorld:
+    print(f"⚙️ Iniciando generación incremental del mundo en modo 'generate'")
+    started = time.perf_counter()
+    model, model_name = _get_generation_model()
+
+    # Paso 1: Generar el concepto general
+    _report(progress_callback, "📝 Paso 1: Generando concepto del mundo...")
+    step_started = time.perf_counter()
+    concept = run_step_1_generate_concept(language, model)
+    _log_timing("Paso 1 (concepto)", step_started)
+    _report(progress_callback, f"✅ Concepto creado: '{concept.title}'")
+
+    return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
+
+def _create_world_from_concept(concept, language, model, model_name, progress_callback, started) -> GeneratedWorld:
+    """Steps 2-4, shared by Inspiration and Generate modes."""
+    flags = get_generation_flags()
+    print(f"⚙️ Generation options: {flags}")
     max_attempts = 3
+
+    # Paso 2: Crear el esqueleto con entidades clave (with verification)
+    _report(progress_callback, "🦴 Paso 2: Creando esqueleto del mundo...")
+    step_started = time.perf_counter()
     skeleton = None
     for attempt in range(1, max_attempts + 1):
         skeleton = run_step_2_skeleton(concept, language, model)
@@ -211,109 +252,89 @@ def create_world_incrementally(theme: str, language: str, progress_callback=None
         valid_characters = hasattr(skeleton, 'key_characters') and skeleton.key_characters and isinstance(skeleton.key_characters, list)
         config = configparser.ConfigParser()
         config.read('config.ini')
-        def parse_range(value):
-            if '-' in value:
-                return tuple(map(int, value.split('-')))
-            return int(value), int(value)
-        locations_range = parse_range(config['Size_World']['Locations'])
-        objects_range = parse_range(config['Size_World']['Objects'])
-        npcs_range = parse_range(config['Size_World']['NPCs'])
+        locations_range = _parse_range(config['Size_World']['Locations'])
+        objects_range = _parse_range(config['Size_World']['Objects'])
+        npcs_range = _parse_range(config['Size_World']['NPCs'])
         size_ok = (
             valid_locations and locations_range[0] <= len(skeleton.key_locations) <= locations_range[1] and
             valid_items and objects_range[0] <= len(skeleton.key_items) <= objects_range[1] and
             valid_characters and npcs_range[0] <= len(skeleton.key_characters) <= npcs_range[1]
         )
         json_ok = verify_pydantic_model(skeleton, WorldSkeleton)
-        if size_ok and json_ok:
+        names_ok = size_ok and skeleton_names_are_unique(skeleton)
+        if size_ok and json_ok and names_ok:
             break
         else:
-            print(f"[WARNING] Skeleton verification failed on attempt {attempt}. Retrying...")
-            if progress_callback:
-                progress_callback(f"[WARNING] Skeleton verification failed on attempt {attempt}. Retrying...")
+            _report(progress_callback, f"[WARNING] Skeleton verification failed on attempt {attempt}. Retrying...")
             skeleton = None
     if skeleton is None:
         raise ValueError("Failed to generate a valid skeleton after multiple attempts.")
-    completion_msg = f"✅ Esqueleto creado con {len(skeleton.key_locations)} ubicaciones, {len(skeleton.key_items)} objetos y {len(skeleton.key_characters)} personajes"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-    
+    _log_timing("Paso 2 (esqueleto)", step_started)
+    _report(progress_callback, f"✅ Esqueleto creado con {len(skeleton.key_locations)} ubicaciones, {len(skeleton.key_items)} objetos y {len(skeleton.key_characters)} personajes")
+
     # Paso 3: Desarrollar detalles y conexiones (with verification)
-    step_msg = "🌍 Paso 3: Desarrollando detalles y conexiones..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    world_basic = None
-    for attempt in range(1, max_attempts + 1):
-        world_basic = run_step_3_details(concept, skeleton, language, model)
-        json_ok = verify_pydantic_model(world_basic, GeneratedWorld)
-        connectivity_ok = verify_location_connectivity(world_basic)
-        objective_ok = verify_objective_completability(world_basic)
-        if json_ok and connectivity_ok and objective_ok:
-            break
-        else:
-            if not json_ok:
-                print(f"[WARNING] Details JSON verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Details JSON verification failed on attempt {attempt}. Retrying...")
-            if not connectivity_ok:
-                print(f"[WARNING] Location connectivity verification failed on attempt {attempt}. Not all locations are reachable. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Location connectivity verification failed on attempt {attempt}. Retrying...")
-            if not objective_ok:
-                print(f"[WARNING] Objective completability verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Objective completability verification failed on attempt {attempt}. Retrying...")
-            world_basic = None
-    if world_basic is None:
-        raise ValueError("Failed to generate valid world details with proper location connectivity and objective completability after multiple attempts.")
-    completion_msg = f"✅ Mundo base creado con {len(world_basic.locations)} ubicaciones y {len(world_basic.items)} objetos (todas las ubicaciones son accesibles)"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
+    _report(progress_callback, "🌍 Paso 3: Desarrollando detalles y conexiones...")
+    step_started = time.perf_counter()
+    if flags['facets']:
+        from .facet_pipeline import generate_world_facets
+        world_basic = generate_world_facets(concept, skeleton, language, model_name, parallel=flags['parallel'])
+    else:
+        world_basic = None
+        for attempt in range(1, max_attempts + 1):
+            world_basic = run_step_3_details(concept, skeleton, language, model)
+            json_ok = verify_pydantic_model(world_basic, GeneratedWorld)
+            connectivity_ok = verify_location_connectivity(world_basic)
+            objective_ok = verify_objective_completability(world_basic)
+            if json_ok and connectivity_ok and objective_ok:
+                break
+            else:
+                if not json_ok:
+                    _report(progress_callback, f"[WARNING] Details JSON verification failed on attempt {attempt}. Retrying...")
+                if not connectivity_ok:
+                    _report(progress_callback, f"[WARNING] Location connectivity verification failed on attempt {attempt}. Retrying...")
+                if not objective_ok:
+                    _report(progress_callback, f"[WARNING] Objective completability verification failed on attempt {attempt}. Retrying...")
+                world_basic = None
+        if world_basic is None:
+            raise ValueError("Failed to generate valid world details with proper location connectivity and objective completability after multiple attempts.")
+    _log_timing("Paso 3 (mundo base)", step_started)
+    _report(progress_callback, f"✅ Mundo base creado con {len(world_basic.locations)} ubicaciones y {len(world_basic.items)} objetos (todas las ubicaciones son accesibles)")
 
     # Paso 4: Añadir puzzles y obstáculos (with verification)
-    step_msg = "🧩 Paso 4: Añadiendo puzzles y obstáculos..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    world_with_puzzles = None
-    for attempt in range(1, max_attempts + 1):
-        world_with_puzzles = run_step_4_puzzles(world_basic, language, model)
-        json_ok = verify_pydantic_model(world_with_puzzles, GeneratedWorld)
-        
-        # Validate and fix puzzle rewards
-        rewards_ok, world_with_puzzles = verify_puzzle_rewards_and_fix(world_with_puzzles)
-        world_with_puzzles = place_unplaced_required_items(world_with_puzzles)
+    _report(progress_callback, "🧩 Paso 4: Añadiendo puzzles y obstáculos...")
+    step_started = time.perf_counter()
+    if flags['puzzle_stage_only']:
+        from .facet_pipeline import run_puzzle_stage
+        config = load_config()
+        world_with_puzzles = run_puzzle_stage(world_basic, language, model, _parse_range(config['Size_World']['Puzzles']))
+    else:
+        world_with_puzzles = None
+        for attempt in range(1, max_attempts + 1):
+            world_with_puzzles = run_step_4_puzzles(world_basic, language, model)
+            json_ok = verify_pydantic_model(world_with_puzzles, GeneratedWorld)
 
-        connectivity_ok = verify_location_connectivity(world_with_puzzles)
-        objective_ok = verify_objective_completability(world_with_puzzles)
-        if json_ok and rewards_ok and connectivity_ok and objective_ok:
-            break
-        else:
-            if not json_ok:
-                print(f"[WARNING] Puzzles JSON verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles JSON verification failed on attempt {attempt}. Retrying...")
-            if not rewards_ok:
-                print(f"[WARNING] Puzzle rewards validation failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzle rewards validation failed on attempt {attempt}. Retrying...")
-            if not connectivity_ok:
-                print(f"[WARNING] Puzzles step broke location connectivity on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles step broke location connectivity on attempt {attempt}. Retrying...")
-            if not objective_ok:
-                print(f"[WARNING] Puzzles step broke objective completability on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles step broke objective completability on attempt {attempt}. Retrying...")
-            world_with_puzzles = None
-    if world_with_puzzles is None:
-        raise ValueError("Failed to generate valid puzzles while maintaining location connectivity and objective completability after multiple attempts.")
-    completion_msg = f"✅ Puzzles añadidos: {len(world_with_puzzles.puzzles)} puzzles en total (conectividad preservada)"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
+            # Validate and fix puzzle rewards
+            rewards_ok, world_with_puzzles = verify_puzzle_rewards_and_fix(world_with_puzzles)
+            world_with_puzzles = place_unplaced_required_items(world_with_puzzles)
+
+            connectivity_ok = verify_location_connectivity(world_with_puzzles)
+            objective_ok = verify_objective_completability(world_with_puzzles)
+            if json_ok and rewards_ok and connectivity_ok and objective_ok:
+                break
+            else:
+                if not json_ok:
+                    _report(progress_callback, f"[WARNING] Puzzles JSON verification failed on attempt {attempt}. Retrying...")
+                if not rewards_ok:
+                    _report(progress_callback, f"[WARNING] Puzzle rewards validation failed on attempt {attempt}. Retrying...")
+                if not connectivity_ok:
+                    _report(progress_callback, f"[WARNING] Puzzles step broke location connectivity on attempt {attempt}. Retrying...")
+                if not objective_ok:
+                    _report(progress_callback, f"[WARNING] Puzzles step broke objective completability on attempt {attempt}. Retrying...")
+                world_with_puzzles = None
+        if world_with_puzzles is None:
+            raise ValueError("Failed to generate valid puzzles while maintaining location connectivity and objective completability after multiple attempts.")
+    _log_timing("Paso 4 (puzzles)", step_started)
+    _report(progress_callback, f"✅ Puzzles añadidos: {len(world_with_puzzles.puzzles)} puzzles en total (conectividad preservada)")
 
     final_msg = "🌱 ¡Generación incremental completada exitosamente!"
     print(final_msg)
@@ -323,160 +344,19 @@ def create_world_incrementally(theme: str, language: str, progress_callback=None
         print("The generated world does not have all locations connected.")
     if not verify_objective_completability(world_with_puzzles):
         print("The generated world has an objective that cannot be completed with available elements.")
+    _log_timing("Generación completa (pasos 1-4)", started)
     if progress_callback:
         progress_callback(final_msg)
     return world_with_puzzles
 
-def create_world_incrementally_generate(language: str, progress_callback=None) -> GeneratedWorld:
-    print(f"⚙️ Iniciando generación incremental del mundo en modo 'generate'")
-
-    # Get model from config once
-    config = load_config()
-    reasoning_model_name, _ = get_model_names(config)
-    model = get_llm(reasoning_model_name)
-    print(f"🤖 Using model for world generation: {reasoning_model_name}")
-
-    # Paso 1: Generar el concepto general
-    step_msg = "📝 Paso 1: Generando concepto del mundo..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    concept = run_step_1_generate_concept(language, model)
-    completion_msg = f"✅ Concepto creado: '{concept.title}'"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-
-    # Paso 2: Crear el esqueleto con entidades clave
-    step_msg = "🦴 Paso 2: Creando esqueleto del mundo..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    max_attempts = 3
-    skeleton = None
-    for attempt in range(1, max_attempts + 1):
-        skeleton = run_step_2_skeleton(concept, language, model)
-        # Verify skeleton sizes
-        valid_locations = hasattr(skeleton, 'key_locations') and skeleton.key_locations and isinstance(skeleton.key_locations, list)
-        valid_items = hasattr(skeleton, 'key_items') and skeleton.key_items and isinstance(skeleton.key_items, list)
-        valid_characters = hasattr(skeleton, 'key_characters') and skeleton.key_characters and isinstance(skeleton.key_characters, list)
-        config = configparser.ConfigParser()
-        config.read('config.ini')
-        def parse_range(value):
-            if '-' in value:
-                return tuple(map(int, value.split('-')))
-            return int(value), int(value)
-        locations_range = parse_range(config['Size_World']['Locations'])
-        objects_range = parse_range(config['Size_World']['Objects'])
-        npcs_range = parse_range(config['Size_World']['NPCs'])
-        size_ok = (
-            valid_locations and locations_range[0] <= len(skeleton.key_locations) <= locations_range[1] and
-            valid_items and objects_range[0] <= len(skeleton.key_items) <= objects_range[1] and
-            valid_characters and npcs_range[0] <= len(skeleton.key_characters) <= npcs_range[1]
-        )
-        json_ok = verify_pydantic_model(skeleton, WorldSkeleton)
-        if size_ok and json_ok:
-            break
-        else:
-            print(f"[WARNING] Skeleton verification failed on attempt {attempt}. Retrying...")
-            if progress_callback:
-                progress_callback(f"[WARNING] Skeleton verification failed on attempt {attempt}. Retrying...")
-            skeleton = None
-    if skeleton is None:
-        raise ValueError("Failed to generate a valid skeleton after multiple attempts.")
-    completion_msg = f"✅ Esqueleto creado con {len(skeleton.key_locations)} ubicaciones, {len(skeleton.key_items)} objetos y {len(skeleton.key_characters)} personajes"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-
-    # Paso 3: Desarrollar detalles y conexiones (with verification)
-    step_msg = "🌍 Paso 3: Desarrollando detalles y conexiones..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    world_basic = None
-    for attempt in range(1, max_attempts + 1):
-        world_basic = run_step_3_details(concept, skeleton, language, model)
-        json_ok = verify_pydantic_model(world_basic, GeneratedWorld)
-        connectivity_ok = verify_location_connectivity(world_basic)
-        objective_ok = verify_objective_completability(world_basic)
-        if json_ok and connectivity_ok and objective_ok:
-            break
-        else:
-            if not json_ok:
-                print(f"[WARNING] Details JSON verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Details JSON verification failed on attempt {attempt}. Retrying...")
-            if not connectivity_ok:
-                print(f"[WARNING] Location connectivity verification failed on attempt {attempt}. Not all locations are reachable. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Location connectivity verification failed on attempt {attempt}. Retrying...")
-            if not objective_ok:
-                print(f"[WARNING] Objective completability verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Objective completability verification failed on attempt {attempt}. Retrying...")
-            world_basic = None
-    if world_basic is None:
-        raise ValueError("Failed to generate valid world details with proper location connectivity and objective completability after multiple attempts.")
-    completion_msg = f"✅ Mundo base creado con {len(world_basic.locations)} ubicaciones y {len(world_basic.items)} objetos (todas las ubicaciones son accesibles)"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-
-    # Paso 4: Añadir puzzles y obstáculos (with verification)
-    step_msg = "🧩 Paso 4: Añadiendo puzzles y obstáculos..."
-    print(step_msg)
-    if progress_callback:
-        progress_callback(step_msg)
-    final_world = None
-    for attempt in range(1, max_attempts + 1):
-        final_world = run_step_4_puzzles(world_basic, language, model)
-        json_ok = verify_pydantic_model(final_world, GeneratedWorld)
-        
-        # Validate and fix puzzle rewards
-        rewards_ok, final_world = verify_puzzle_rewards_and_fix(final_world)
-        final_world = place_unplaced_required_items(final_world)
-
-        connectivity_ok = verify_location_connectivity(final_world)
-        objective_ok = verify_objective_completability(final_world)
-        if json_ok and rewards_ok and connectivity_ok and objective_ok:
-            break
-        else:
-            if not json_ok:
-                print(f"[WARNING] Puzzles JSON verification failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles JSON verification failed on attempt {attempt}. Retrying...")
-            if not rewards_ok:
-                print(f"[WARNING] Puzzle rewards validation failed on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzle rewards validation failed on attempt {attempt}. Retrying...")
-            if not connectivity_ok:
-                print(f"[WARNING] Puzzles step broke location connectivity on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles step broke location connectivity on attempt {attempt}. Retrying...")
-            if not objective_ok:
-                print(f"[WARNING] Puzzles step broke objective completability on attempt {attempt}. Retrying...")
-                if progress_callback:
-                    progress_callback(f"[WARNING] Puzzles step broke objective completability on attempt {attempt}. Retrying...")
-            final_world = None
-    if final_world is None:
-        raise ValueError("Failed to generate valid puzzles while maintaining location connectivity and objective completability after multiple attempts.")
-    completion_msg = f"✅ Puzzles añadidos: {len(final_world.puzzles)} puzzles en total (conectividad preservada)"
-    print(completion_msg)
-    if progress_callback:
-        progress_callback(completion_msg)
-
-    final_msg = "🌱 ¡Generación incremental completada exitosamente!"
-    print(final_msg)
-    if not validate_world_size(final_world):
-        print("The generated world does not meet the size requirements.")
-    if not verify_location_connectivity(final_world):
-        print("The generated world does not have all locations connected.")
-    if not verify_objective_completability(final_world):
-        print("The generated world has an objective that cannot be completed with available elements.")
-    if progress_callback:
-        progress_callback(final_msg)
-    return final_world
+def skeleton_names_are_unique(skeleton: WorldSkeleton) -> bool:
+    """Names identify entities everywhere downstream, so two entities of a kind cannot share one."""
+    for entities in (skeleton.key_locations, skeleton.key_items, skeleton.key_characters):
+        names = [entity.name for entity in entities]
+        if len(names) != len(set(names)):
+            print(f"[ERROR] Skeleton has duplicate names: {names}")
+            return False
+    return True
 
 def validate_world_size(generated_world: GeneratedWorld) -> bool:
     # Load configuration
