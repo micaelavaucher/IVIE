@@ -535,8 +535,10 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
             memory_system = create_memory_system(session_world_id, api_key)
             print(f"🧠 Intelligent memory system initialized for world {session_world_id}")
             
-            # Load existing memories from previous logs if available
-            if session_world_id:
+            # Load existing memories from previous logs if available. A resumed session (world_id given)
+            # already has its memories in the persistent vector store; loading them again from the
+            # trace would duplicate them
+            if session_world_id and world_id is None:
                 memory_system.load_memories_from_db(session_world_id)
         except Exception as e:
             print(f"⚠️ Failed to initialize memory system: {e}")
