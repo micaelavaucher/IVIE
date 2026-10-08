@@ -382,7 +382,7 @@ def process_player_input_structured(world, message, language, reasoning_model, n
         game_log_dictionary[number_of_turns]["predicted_outcomes"] = world_update.narration
         game_log_dictionary[number_of_turns]["structured_update"] = world_update.model_dump()
 
-        world.update_from_structured(world_update)
+        world.update_from_structured(world_update, language=language, player_input=message)
 
         if memory_system:
             try:

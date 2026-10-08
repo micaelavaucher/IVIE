@@ -928,7 +928,10 @@ class World:
     wanted = normalize_name(name or "")
     return next((l for l in self.locations.values() if wanted and normalize_name(l.name) == wanted), None)
 
-  def update_from_structured(self, world_update, language: str = 'en') -> None:
+  def update_from_structured(self, world_update, language: str = 'en', player_input: str = None) -> None:
+    """Apply a WorldUpdate. With player_input, puzzle answers are checked against what the player
+    typed instead of the answer the reasoning model reports (which it can fill in by itself)."""
+
     
     # Handle moved objects
     for moved_obj in world_update.moved_objects:
@@ -1060,8 +1063,8 @@ class World:
     # Handle puzzle solutions
     for puzzle_solution in world_update.puzzles_solved:
       try:
-        if puzzle_solution.success:
-          success = self.solve_puzzle(puzzle_solution.puzzle_name, puzzle_solution.answer)
+        if puzzle_solution.success or player_input is not None:
+          success = self.solve_puzzle(puzzle_solution.puzzle_name, puzzle_solution.answer, player_input=player_input)
           if success:
             print(f"✅ Puzzle {puzzle_solution.puzzle_name} solved successfully!")
             # Update hints after solving a puzzle - player may now need different hints
@@ -1268,7 +1271,16 @@ class World:
       answer = ' '.join(answer.split())
       return answer
 
-  def solve_puzzle(self, puzzle_name: str, answer: str) -> bool:
+  @staticmethod
+  def answer_in_text(expected: str, text: str) -> bool:
+    """Whether the expected answer appears in the text as whole words, ignoring case, accents and punctuation."""
+    from ..llm.name_matching import normalize_name
+    def words(value):
+      return " ".join(normalize_name(value or "").split())
+    expected_words, text_words = words(expected), words(text)
+    return bool(expected_words) and f" {expected_words} " in f" {text_words} "
+
+  def solve_puzzle(self, puzzle_name: str, answer: str, player_input: str = None) -> bool:
       # Try exact match first
       puzzle = None
       actual_puzzle_name = None
@@ -1302,7 +1314,14 @@ class World:
       print(f"   Expected (normalized): '{correct_answer_norm}'")
       print(f"   Player (normalized): '{user_answer_norm}'")
       
-      if correct_answer_norm == user_answer_norm:
+      if player_input is not None:
+          # The player must have said the answer; the model's own `answer` field is not trusted
+          correct = self.answer_in_text(puzzle.answer, player_input)
+          print(f"   Player input contains the answer: {correct}")
+      else:
+          correct = correct_answer_norm == user_answer_norm
+
+      if correct:
           # Apply rewards
           self._apply_puzzle_rewards(puzzle)
           # Mark puzzle as solved (use actual puzzle name from world)
