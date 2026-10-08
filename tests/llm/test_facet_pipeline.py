@@ -240,7 +240,7 @@ def test_a_component_repeated_five_times_is_rejected():
 
     errors = facet_pipeline._verify_objective(facet, roster)
 
-    assert any("exactly ONE component" in e for e in errors)
+    assert any("repeats components" in e for e in errors)
 
 
 def test_deliver_takes_one_item_and_one_recipient():
@@ -302,3 +302,11 @@ def test_a_skeleton_name_with_a_newline_is_rejected():
 
     assert generation_pipeline.skeleton_names_are_unique(SKELETON)
     assert not generation_pipeline.skeleton_names_are_unique(broken)
+
+
+def test_gathering_several_different_items_is_a_valid_objective():
+    from src.ivie.llm.name_matching import NameRoster
+    roster = NameRoster(location=[], item=["Fragmento Norte", "Fragmento Sur", "Fragmento Este"], character=[])
+    facet = _objective_facet("get_item", [("Fragmento Norte", "item"), ("Fragmento Sur", "item"), ("Fragmento Este", "item")])
+
+    assert facet_pipeline._verify_objective(facet, roster) == []

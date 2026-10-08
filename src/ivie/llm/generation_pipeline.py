@@ -548,40 +548,41 @@ def verify_objective_completability(world: GeneratedWorld) -> bool:
         return True
     
     elif obj_type in ["DELIVER_AN_ITEM", "deliver_an_item"]:
-        # Need both item and target (location/character) components
-        item_component = None
+        # Need the items (one or more) and the target (location/character)
+        item_components = []
         target_component = None
-        
+
         for component in objective.components:
             component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
             if component_type in ["ITEM", "item"]:
-                item_component = component
+                item_components.append(component)
             elif component_type in ["LOCATION", "location", "CHARACTER", "character"]:
                 target_component = component
-        
-        if not item_component:
+
+        if not item_components:
             print(f"[ERROR] DELIVER_AN_ITEM objective has no item component")
             return False
-        
+
         if not target_component:
             print(f"[ERROR] DELIVER_AN_ITEM objective has no target component")
             return False
-        
-        # Validate item exists and is accessible
-        if item_component.name not in item_names:
-            print(f"[ERROR] DELIVER_AN_ITEM objective refers to non-existent item: '{item_component.name}'")
-            return False
-        
-        if item_component.name not in accessible_items:
-            print(f"[ERROR] DELIVER_AN_ITEM objective item '{item_component.name}' exists but is not placed anywhere accessible")
-            return False
-        
-        # Check if item is gettable
-        target_item = next((item for item in world.items if item.name == item_component.name), None)
-        if target_item and not target_item.gettable:
-            print(f"[ERROR] DELIVER_AN_ITEM objective item '{item_component.name}' exists but is not gettable")
-            return False
-        
+
+        for item_component in item_components:
+            # Validate item exists and is accessible
+            if item_component.name not in item_names:
+                print(f"[ERROR] DELIVER_AN_ITEM objective refers to non-existent item: '{item_component.name}'")
+                return False
+
+            if item_component.name not in accessible_items:
+                print(f"[ERROR] DELIVER_AN_ITEM objective item '{item_component.name}' exists but is not placed anywhere accessible")
+                return False
+
+            # Check if item is gettable
+            target_item = next((item for item in world.items if item.name == item_component.name), None)
+            if target_item and not target_item.gettable:
+                print(f"[ERROR] DELIVER_AN_ITEM objective item '{item_component.name}' exists but is not gettable")
+                return False
+
         # Validate target exists
         target_type = target_component.component_type.value if hasattr(target_component.component_type, 'value') else str(target_component.component_type)
         if target_type in ["LOCATION", "location"]:

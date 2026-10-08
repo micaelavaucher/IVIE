@@ -139,8 +139,8 @@ def get_objective_info(world, language):
     elif isinstance(world.objective, tuple) and len(world.objective) >= 2:
         # Legacy tuple format
         obj_component = world.objective[1]
-        # A MysteryObjective also has a description; it is handled below, with its progress
-        if hasattr(obj_component, 'description') and obj_component.__class__.__name__ != 'MysteryObjective':
+        # MysteryObjective and ItemCollection also have a description; they are handled below, with their progress
+        if hasattr(obj_component, 'description') and obj_component.__class__.__name__ not in ('MysteryObjective', 'ItemCollection'):
             raw_objective = obj_component.description
         elif hasattr(obj_component, '__class__') and obj_component.__class__.__name__ == 'MysteryObjective':
             # Special handling for mystery objectives
@@ -175,8 +175,16 @@ def get_objective_info(world, language):
             player_or_item = world.objective[0]
             target = world.objective[1]
             
+            if "ItemCollection" in (player_or_item.__class__.__name__, target.__class__.__name__):
+                # Several items needed together: the sentence plus how many are already in place
+                collection = target if target.__class__.__name__ == "ItemCollection" else player_or_item
+                container = (world.player.inventory if collection is target
+                             else target.items if target.__class__.__name__ == "Location" else target.inventory)
+                done, total = collection.progress(container)
+                raw_objective = f"🎯 {world.objective_statement(language)}"
+                raw_objective += (f"\n\n📦 Progreso: {done}/{total}" if language == 'es' else f"\n\n📦 Progress: {done}/{total}")
             # Check if this is a delivery objective (Item -> Location/Character)
-            if player_or_item.__class__.__name__ == "Item":
+            elif player_or_item.__class__.__name__ == "Item":
                 # DELIVER_AN_ITEM objective: (item, target_location_or_character)
                 item = player_or_item
                 target_class = target.__class__.__name__
@@ -455,7 +463,10 @@ def generate_narration(world, last_player_position, response_update, language, n
 
     return answer, last_player_position
 
-def check_objective_completion(world, answer, language):
+def check_objective_completion(world, answer, language, include_completion_text=True):
+    """Append the completion banner. With include_completion_text=False the pre-written ending is
+    left out: the narrator already wrote one from what happened, while the pre-written text may
+    describe steps the game never asked for ("with the capacitor reprogrammed...")."""
     if world.check_objective():
         answer += "\n\n🎯¡Completaste el objetivo!" if language == 'es' else "\n\n🎯You have completed your quest!"
 
@@ -463,7 +474,7 @@ def check_objective_completion(world, answer, language):
             obj_type = world.objective_data.type.value if hasattr(world.objective_data.type, 'value') else str(world.objective_data.type)
             if obj_type in ["SOLVE_MYSTERY", "solve_mystery"] and hasattr(world.objective_data, 'mystery_solution') and world.objective_data.mystery_solution:
                 answer += f"\n\n🎭 **Solución del Misterio:**\n{world.objective_data.mystery_solution}" if language == 'es' else f"\n\n🎭 **Mystery Solution:**\n{world.objective_data.mystery_solution}"
-            elif hasattr(world.objective_data, 'completion_narration') and world.objective_data.completion_narration:
+            elif include_completion_text and hasattr(world.objective_data, 'completion_narration') and world.objective_data.completion_narration:
                 answer += f"\n\n📖 **Final:**\n{world.objective_data.completion_narration}" if language == 'es' else f"\n\n📖 **Conclusion:**\n{world.objective_data.completion_narration}"
 
         elif (hasattr(world, 'objective') and world.objective and isinstance(world.objective, tuple) and len(world.objective) >= 2):
@@ -660,7 +671,7 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
             step_started = time.perf_counter()
             answer, last_player_position = generate_narration(world, last_player_position, response_update, language, narrative_model)
             print(f"[TIMING] turno: narración de escena {time.perf_counter() - step_started:.1f}s")
-        answer = check_objective_completion(world, answer, language)
+        answer = check_objective_completion(world, answer, language, include_completion_text=not narrate_from_outcome)
 
         world_state_formatted = world.format_world_state_for_chat(language=language)
         answer += f"\n\n---\n{world_state_formatted}"

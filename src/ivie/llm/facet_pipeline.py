@@ -190,15 +190,21 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
         if needed and not components.get(needed):
             errors.append(f"A {objective_type} objective needs one component of type '{needed}'.")
 
-    # One principal component: the engine completes the objective with the first one, so repeating a
-    # name ("Fragment (1 of 5)" five times) or listing several made one item complete "gather five"
+    # get_item and deliver_an_item may need several items together (the engine completes them when
+    # every item is held or delivered); each must be named once, or one item would count several
+    # times. reach_location and find_character have one target, and a delivery one recipient.
     if objective_type != 'solve_mystery':
         names = [component.name for component in objective.components]
-        limits = {'deliver_an_item': 2}
-        if len(names) != len(set(names)) or len(names) > limits.get(objective_type, 1):
-            errors.append(f"The objective has components {names}, but a {objective_type} objective takes exactly "
-                          f"{'one item and one recipient' if objective_type == 'deliver_an_item' else 'ONE component'}, "
-                          f"each named once. Describe the goal in terms of that single component.")
+        if len(names) != len(set(names)):
+            errors.append(f"The objective repeats components {names}. Name each item, place or character once; "
+                          f"to gather several items, list each different item once.")
+        targets = len(components.get('location', [])) + len(components.get('character', []))
+        if objective_type in ('reach_location', 'find_character') and len(names) > 1:
+            errors.append(f"A {objective_type} objective has exactly one component; it has {names}.")
+        if objective_type == 'get_item' and targets:
+            errors.append("A get_item objective only has item components.")
+        if objective_type == 'deliver_an_item' and targets > 1:
+            errors.append("A deliver_an_item objective has exactly one recipient (a character or a location).")
     return errors
 
 

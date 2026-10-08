@@ -32,6 +32,30 @@ class MysteryClue:
         self.discovered = discovered
         self.item_location = item_location
 
+class ItemCollection:
+    """Several items an objective needs together: "gather the three fragments", "deliver both letters".
+
+    Used as one side of the objective tuple, like MysteryObjective: (player, ItemCollection) is
+    completed when the player holds every item; (ItemCollection, Location or Character) when every
+    item is in that location or with that character.
+    """
+    def __init__(self, items: 'list[Item]', description: str = ""):
+        self.items = list(items)
+        self.description = description
+        self.name = ", ".join(item.name for item in self.items)
+
+    def names(self, language: str = 'en') -> str:
+        names = [item.name for item in self.items]
+        if len(names) < 2:
+            return "".join(names)
+        joiner = " y " if language == 'es' else " and "
+        return ", ".join(names[:-1]) + joiner + names[-1]
+
+    def progress(self, container) -> tuple:
+        held = [item for item in self.items if item in container]
+        return len(held), len(self.items)
+
+
 class MysteryObjective:
     """A mystery objective that requires discovering clues."""
     def __init__(self, name: str, description: str, clues: 'list[MysteryClue]', 
@@ -289,6 +313,14 @@ class World:
     first_component_class = self.objective[0].__class__.__name__
     second_component_class = self.objective[1].__class__.__name__
 
+    # Several items needed together
+    if second_component_class == "ItemCollection" and first_component_class == "Character":
+      return all(item in self.objective[0].inventory for item in self.objective[1].items)
+    if first_component_class == "ItemCollection":
+      target = self.objective[1]
+      container = target.items if second_component_class == "Location" else getattr(target, 'inventory', [])
+      return all(item in container for item in self.objective[0].items)
+
     if first_component_class == "Character" and second_component_class == "Character":
       if self.objective[0].location == self.objective[1].location: done = True
     elif first_component_class == "Character" and second_component_class == "Location":
@@ -310,116 +342,6 @@ class World:
       done = False
 
     return done
-
-  def set_objective_from_generated(self, objective_data, items_dict, locations_dict, characters_list, player):
-      try:
-          # Store the structured objective data for access to completion_narration and other metadata
-          self.objective_data = objective_data
-          
-          # Handle enum values properly
-          obj_type = objective_data.type.value if hasattr(objective_data.type, 'value') else str(objective_data.type)
-          components = objective_data.components
-          
-          # Handle different objective types with new component system
-          if obj_type in ["GET_ITEM", "get_item"]:
-              # Find the item component
-              for component in components:
-                  component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                  if component_type in ["ITEM", "item"]:
-                      if component.name in items_dict:
-                          self.objective = (player, items_dict[component.name])
-                          return
-          
-          elif obj_type in ["REACH_LOCATION", "reach_location"]:
-              # Find the location component
-              for component in components:
-                  component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                  if component_type in ["LOCATION", "location"]:
-                      if component.name in locations_dict:
-                          self.objective = (player, locations_dict[component.name])
-                          return
-          
-          elif obj_type in ["FIND_CHARACTER", "find_character"]:
-              # Find the character component
-              for component in components:
-                  component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                  if component_type in ["CHARACTER", "character"]:
-                      character = next((c for c in characters_list if c.name == component.name), None)
-                      if character:
-                          self.objective = (player, character)
-                          return
-          
-          elif obj_type in ["DELIVER_AN_ITEM", "deliver_an_item"]:
-              # Need both item and location/character components
-              item_component = None
-              target_component = None
-              
-              for component in components:
-                  component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                  if component_type in ["ITEM", "item"]:
-                      item_component = component
-                  elif component_type in ["LOCATION", "location", "CHARACTER", "character"]:
-                      target_component = component
-              
-              if item_component and target_component:
-                  if item_component.name in items_dict:
-                      target_type = target_component.component_type.value if hasattr(target_component.component_type, 'value') else str(target_component.component_type)
-                      if target_type in ["LOCATION", "location"] and target_component.name in locations_dict:
-                          self.objective = (items_dict[item_component.name], locations_dict[target_component.name])
-                          return
-                      elif target_type in ["CHARACTER", "character"]:
-                          character = next((c for c in characters_list if c.name == target_component.name), None)
-                          if character:
-                              self.objective = (items_dict[item_component.name], character)
-                              return
-          
-          elif obj_type in ["SOLVE_MYSTERY", "solve_mystery"]:
-              # Create a proper MysteryObjective with clue validation
-              from .world import MysteryObjective, MysteryClue
-              
-              # Validate and create clues
-              valid_clues = []
-              if hasattr(objective_data, 'mystery_clues') and objective_data.mystery_clues:
-                  for clue_data in objective_data.mystery_clues:
-                      # Validate that the associated item exists
-                      if clue_data.associated_item in items_dict:
-                          clue = MysteryClue(
-                              name=clue_data.name,
-                              description=clue_data.description,
-                              associated_item=clue_data.associated_item,
-                              relevance_to_mystery=clue_data.relevance_to_mystery,
-                              discovered=clue_data.discovered,
-                              item_location=getattr(clue_data, 'item_location', None)
-                          )
-                          valid_clues.append(clue)
-              
-              # Only create mystery objective if there are valid clues
-              if valid_clues:
-                  mystery_solution = getattr(objective_data, 'mystery_solution', 'Mystery solution not specified')
-                  mystery_objective = MysteryObjective(
-                      name=f"Mystery: {objective_data.description}",
-                      description=objective_data.description,
-                      clues=valid_clues,
-                      mystery_solution=mystery_solution
-                  )
-                  self.objective = (player, mystery_objective)
-                  return
-          
-          # Fallback for legacy objective types or unknown formats
-          elif obj_type == "item_to_location":
-              item_name, location_name = objective_data.components
-              if item_name in items_dict and location_name in locations_dict:
-                  self.objective = (items_dict[item_name], locations_dict[location_name])
-                  return
-          
-          print(f"❌ Could not set objective from type: {obj_type}")
-          self.objective = None
-                  
-      except Exception as e:
-          print(f"Error setting objective: {e}")
-          import traceback
-          traceback.print_exc()
-          self.objective = None
 
   def add_puzzle(self, puzzle: Puzzle) -> None:
       if puzzle.name in self.puzzles:
@@ -926,6 +848,14 @@ class World:
     first, second = self.objective[0], self.objective[1]
     kinds = (first.__class__.__name__, second.__class__.__name__)
     es = language == 'es'
+    if kinds == ('Character', 'ItemCollection'):
+      return (f"Tienes que conseguir {second.names('es')}." if es else f"You have to get {second.names('en')}.")
+    if kinds[0] == 'ItemCollection' and kinds[1] in ('Location', 'Character'):
+      if kinds[1] == 'Location':
+        return (f"Tienes que llevar {first.names('es')} a {second.name}." if es
+                else f"You have to take {first.names('en')} to {second.name}.")
+      return (f"Tienes que entregarle {first.names('es')} a {second.name}." if es
+              else f"You have to give {first.names('en')} to {second.name}.")
     if kinds[1] == 'MysteryObjective':
       total = len(second.clues)
       return (f"Tienes que resolver el misterio: descubre las {total} pistas." if es

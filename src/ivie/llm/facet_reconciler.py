@@ -194,7 +194,7 @@ def _avoid_trivial_objective(objective, player, characters, locations, report) -
                     player.location = new_start
 
     elif objective_type == 'get_item':
-        for target in _objective_components(objective, 'item')[:1]:
+        for target in _objective_components(objective, 'item'):
             if target in player.inventory:
                 player.inventory = [name for name in player.inventory if name != target]
                 move_item_away(target, player.location, "started in the player's inventory")
@@ -204,7 +204,7 @@ def _avoid_trivial_objective(objective, player, characters, locations, report) -
                 move_item_away(target, player.location, "was lying at the starting location")
 
     elif objective_type == 'deliver_an_item':
-        items = _objective_components(objective, 'item')[:1]
+        items = _objective_components(objective, 'item')
         target_locations = _objective_components(objective, 'location')[:1]
         target_characters = _objective_components(objective, 'character')[:1]
         for item_name in items:

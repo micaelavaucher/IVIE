@@ -272,15 +272,15 @@ def PROMPT_FACET_OBJECTIVE(concept, skeleton, language: str = 'es', previous_err
 **GENERA SOLO EL OBJETIVO, EL TEMA Y EL CONTEXTO NARRATIVO.** No generes ubicaciones, objetos ni personajes: solo puedes REFERENCIARLOS por su nombre exacto.
 
 **INSTRUCCIONES CRÍTICAS PARA LOS COMPONENTES DEL OBJETIVO:**
-- El objetivo DEBE tener SOLO UN COMPONENTE PRINCIPAL que representa la meta final
+- Los componentes son SOLO la meta final (lo que hay que tener, alcanzar, encontrar o entregar)
 - Para objetivos tipo "reach_location": UN solo componente de tipo "location" (la ubicación de destino)
-- Para objetivos tipo "get_item": UN solo componente de tipo "item" (el objeto que obtener)
+- Para objetivos tipo "get_item": un componente de tipo "item" por cada objeto que hay que obtener. Si la meta es reunir varios objetos (por ejemplo, tres fragmentos), cada uno debe ser un objeto DISTINTO de la lista y aparecer una sola vez; el objetivo se cumple cuando el jugador los tiene todos
 - Para objetivos tipo "find_character": UN solo componente de tipo "character" (el personaje que encontrar)
-- Para objetivos tipo "deliver_an_item": EXACTAMENTE DOS componentes - UNO de tipo "item" (el objeto a entregar) y UNO de tipo "character" o "location" (el destinatario). Si solo pones el destino y olvidas el item, el objetivo es imposible de completar y será rechazado
+- Para objetivos tipo "deliver_an_item": uno o más componentes de tipo "item" (los objetos a entregar, distintos) y EXACTAMENTE UNO de tipo "character" o "location" (el destinatario). Si solo pones el destino y olvidas el item, el objetivo es imposible de completar y será rechazado
 - NO incluyas elementos auxiliares o herramientas como componentes principales
 - Los componentes principales son SOLO la meta final, no los medios para alcanzarla
 - Todo componente DEBE existir con su nombre exacto en las listas de arriba
-- La `description` del objetivo debe corresponder EXACTAMENTE a sus componentes: si el componente es UN objeto, no hables de reunir varios; no menciones elementos que no estén en las listas, ni una cantidad de pistas distinta de las `mystery_clues` que defines
+- La `description` del objetivo debe corresponder EXACTAMENTE a sus componentes: si menciona una cantidad, debe ser la cantidad de componentes; no menciones elementos que no estén en las listas, ni una cantidad de pistas distinta de las `mystery_clues` que defines, ni acciones que el juego no puede comprobar (reparar, reprogramar, activar): la meta es tener, alcanzar, encontrar o entregar
 
 **SI EL OBJETIVO ES UN MISTERIO (type: "solve_mystery"), DEBES incluir:**
 1. **mystery_clues**: al menos 3-5 pistas que el jugador pueda descubrir, que conduzcan lógicamente a la solución
@@ -309,15 +309,15 @@ Ejemplos de completion_narration:
 **GENERATE ONLY THE OBJECTIVE, THE THEME, AND THE NARRATIVE CONTEXT.** Do not generate locations, items, or characters - you may only REFERENCE them by their exact names.
 
 **CRITICAL INSTRUCTIONS FOR OBJECTIVE COMPONENTS:**
-- The objective MUST have only ONE PRINCIPAL COMPONENT representing the final goal
+- Components are ONLY the final goal (what must be held, reached, found or delivered)
 - For "reach_location" objectives: a single component of type "location" (the destination)
-- For "get_item" objectives: a single component of type "item" (the item to obtain)
+- For "get_item" objectives: one component of type "item" for each item to obtain. If the goal is to gather several items (e.g. three fragments), each must be a DIFFERENT item from the list and appear once; the objective is completed when the player holds all of them
 - For "find_character" objectives: a single component of type "character" (the character to find)
-- For "deliver_an_item" objectives: EXACTLY TWO components - ONE of type "item" (the thing delivered) and ONE of type "character" or "location" (the recipient). If you give only the destination and omit the item, the objective is impossible to complete and will be rejected
+- For "deliver_an_item" objectives: one or more components of type "item" (the things delivered, all different) and EXACTLY ONE of type "character" or "location" (the recipient). If you give only the destination and omit the item, the objective is impossible to complete and will be rejected
 - Do NOT include auxiliary elements or tools as principal components
 - Principal components are ONLY the final goal, not the means of reaching it
 - Every component MUST exist by its exact name in the lists above
-- The objective's `description` must match its components EXACTLY: if the component is ONE item, do not talk about gathering several; do not mention elements that are not in the lists, nor a number of clues different from the `mystery_clues` you define
+- The objective's `description` must match its components EXACTLY: if it mentions a quantity, it must be the number of components; do not mention elements that are not in the lists, nor a number of clues different from the `mystery_clues` you define, nor actions the game cannot check (repair, reprogram, activate): the goal is to hold, reach, find or deliver
 
 **IF THE OBJECTIVE IS A MYSTERY (type: "solve_mystery"), you MUST include:**
 1. **mystery_clues**: at least 3-5 clues the player can discover, leading logically to the solution

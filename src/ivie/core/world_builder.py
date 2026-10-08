@@ -161,11 +161,19 @@ def set_objective_from_generated(objective_data, items_dict, locations_dict, cha
         obj_type = objective_data.type.value if hasattr(objective_data.type, 'value') else str(objective_data.type)
         components = getattr(objective_data, 'components', [])
 
-        if obj_type.lower() in ["get_item"]:
-            for component in components:
-                component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.lower() == "item" and component.name in items_dict:
-                    return (player, items_dict[component.name])
+        # Every item component, in order and once: an objective may need several items together
+        objective_items = []
+        for component in components:
+            component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
+            if component_type.lower() == "item" and component.name in items_dict and items_dict[component.name] not in objective_items:
+                objective_items.append(items_dict[component.name])
+        from .world import ItemCollection
+        description = getattr(objective_data, 'description', '')
+        items_side = (objective_items[0] if len(objective_items) == 1
+                      else ItemCollection(objective_items, description) if objective_items else None)
+
+        if obj_type.lower() in ["get_item"] and items_side is not None:
+            return (player, items_side)
 
         if obj_type.lower() in ["reach_location"]:
             for component in components:
@@ -182,23 +190,20 @@ def set_objective_from_generated(objective_data, items_dict, locations_dict, cha
                         return (player, character)
 
         if obj_type.lower() in ["deliver_an_item"]:
-            item_component = None
             target_component = None
             for component in components:
                 component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.lower() == "item":
-                    item_component = component
-                elif component_type.lower() in ["location", "character"]:
+                if component_type.lower() in ["location", "character"]:
                     target_component = component
 
-            if item_component and target_component and item_component.name in items_dict:
+            if items_side is not None and target_component:
                 target_type = target_component.component_type.value if hasattr(target_component.component_type, 'value') else str(target_component.component_type)
                 if target_type.lower() == "location" and target_component.name in locations_dict:
-                    return (items_dict[item_component.name], locations_dict[target_component.name])
+                    return (items_side, locations_dict[target_component.name])
                 elif target_type.lower() == "character":
                     character = next((c for c in characters_list if c.name == target_component.name), None)
                     if character:
-                        return (items_dict[item_component.name], character)
+                        return (items_side, character)
 
         if obj_type.lower() in ["solve_mystery"]:
             from .world import MysteryObjective, MysteryClue
@@ -240,6 +245,18 @@ def set_objective_from_generated(objective_data, items_dict, locations_dict, cha
         traceback.print_exc()
         return None
 
+def _objective_signature(objective) -> tuple:
+    """The objective as comparable names: ("Character", "Ana"), ("ItemCollection", ("A", "B")), ..."""
+    def side(component):
+        kind = component.__class__.__name__
+        if kind == "ItemCollection":
+            return (kind, tuple(item.name for item in component.items))
+        if kind == "MysteryObjective":
+            return (kind, tuple(clue.name for clue in component.clues))
+        return (kind, getattr(component, 'name', str(component)))
+    return tuple(side(component) for component in objective)
+
+
 def validate_objective_components(world: World) -> tuple:
     missing_components = []
     validation_details = ""
@@ -265,7 +282,8 @@ def validate_objective_components(world: World) -> tuple:
                             item_found = True
                             break
                     if not item_found:
-                        for character in world.characters.values():
+                        # The player's inventory counts too: an item already taken is still in the world
+                        for character in list(world.characters.values()) + [world.player]:
                             if any(getattr(item, 'name', None) == component_name for item in getattr(character, 'inventory', []) if character.inventory):
                                 item_found = True
                                 break
@@ -280,63 +298,12 @@ def validate_objective_components(world: World) -> tuple:
                 if not character_exists:
                     missing_components.append(f"Character '{component_name}' (required for objective)")
 
-        obj_first = world.objective[0]
-        obj_second = world.objective[1]
-
-        if obj_type.upper() == "DELIVER_AN_ITEM":
-            item_component = None
-            target_component = None
-            for component in objective_data.components:
-                component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.upper() == "ITEM":
-                    item_component = component
-                elif component_type.upper() in ["LOCATION", "CHARACTER"]:
-                    target_component = component
-
-            if item_component and target_component:
-                expected_item = world.items.get(item_component.name)
-                if target_component.component_type.value.upper() == "LOCATION":
-                    expected_target = world.locations.get(target_component.name)
-                else:
-                    expected_target = next((c for c in world.characters.values() if c.name == target_component.name), None)
-                if obj_first != expected_item or obj_second != expected_target:
-                    missing_components.append(f"Objective tuple mismatch: expected ({item_component.name}, {target_component.name}) but got ({getattr(obj_first, 'name', str(obj_first))}, {getattr(obj_second, 'name', str(obj_second))})")
-
-        if obj_type.upper() == "GET_ITEM":
-            item_component = None
-            for component in objective_data.components:
-                component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.upper() == "ITEM":
-                    item_component = component
-                    break
-            if item_component:
-                expected_item = world.items.get(item_component.name)
-                if obj_first != world.player or obj_second != expected_item:
-                    missing_components.append(f"Objective tuple mismatch: expected (player, {item_component.name}) but got ({getattr(obj_first, 'name', str(obj_first))}, {getattr(obj_second, 'name', str(obj_second))})")
-
-        if obj_type.upper() == "REACH_LOCATION":
-            location_component = None
-            for component in objective_data.components:
-                component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.upper() == "LOCATION":
-                    location_component = component
-                    break
-            if location_component:
-                expected_location = world.locations.get(location_component.name)
-                if obj_first != world.player or obj_second != expected_location:
-                    missing_components.append(f"Objective tuple mismatch: expected (player, {location_component.name}) but got ({getattr(obj_first, 'name', str(obj_first))}, {getattr(obj_second, 'name', str(obj_second))})")
-
-        if obj_type.upper() == "FIND_CHARACTER":
-            character_component = None
-            for component in objective_data.components:
-                component_type = component.component_type.value if hasattr(component.component_type, 'value') else str(component.component_type)
-                if component_type.upper() == "CHARACTER":
-                    character_component = component
-                    break
-            if character_component:
-                expected_character = next((c for c in world.characters.values() if c.name == character_component.name), None)
-                if obj_first != world.player or obj_second != expected_character:
-                    missing_components.append(f"Objective tuple mismatch: expected (player, {character_component.name}) but got ({getattr(obj_first, 'name', str(obj_first))}, {getattr(obj_second, 'name', str(obj_second))})")
+        # The objective must be what the builder makes from the generated data
+        expected = set_objective_from_generated(objective_data, world.items, world.locations,
+                                                list(world.characters.values()), world.player)
+        if expected is not None and _objective_signature(expected) != _objective_signature(world.objective):
+            missing_components.append(f"Objective mismatch: expected {_objective_signature(expected)} "
+                                      f"but got {_objective_signature(world.objective)}")
 
         if obj_type.upper() == "SOLVE_MYSTERY" and hasattr(objective_data, 'mystery_clues') and objective_data.mystery_clues:
             for clue in objective_data.mystery_clues:

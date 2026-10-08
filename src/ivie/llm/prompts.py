@@ -573,12 +573,14 @@ def world_size_note(language: str = 'es') -> str:
     npcs = config['Size_World']['NPCs']
     if language == 'es':
         return (f"\n**TAMAÑO DEL MUNDO (OBLIGATORIO):** El mundo tendrá {locations} ubicaciones, {objects} objetos y "
-                f"{npcs} personajes además del jugador. El objetivo debe poder cumplirse con UN solo objeto, lugar o "
-                f"personaje, o, si es un misterio, descubriendo pistas en esos objetos. No prometas cantidades que el "
+                f"{npcs} personajes además del jugador. El objetivo debe poder cumplirse teniendo, alcanzando, "
+                f"encontrando o entregando objetos, lugares o personajes de ese mundo, o, si es un misterio, descubriendo "
+                f"pistas en esos objetos; nada de reparar, reprogramar o activar cosas. No prometas cantidades que el "
                 f"mundo no puede tener (por ejemplo, 'reunir cinco fragmentos' o 'encontrar tres nodos').\n")
     return (f"\n**WORLD SIZE (MANDATORY):** The world will have {locations} locations, {objects} items and {npcs} "
-            f"characters besides the player. The objective must be completable with ONE single item, place or "
-            f"character, or, for a mystery, by discovering clues in those items. Do not promise quantities the world "
+            f"characters besides the player. The objective must be completable by holding, reaching, finding "
+            f"or delivering items, places or characters of that world, or, for a mystery, by discovering clues in those "
+            f"items; no repairing, reprogramming or activating things. Do not promise quantities the world "
             f"cannot hold (e.g. 'gather five fragments' or 'find three nodes').\n")
 
 

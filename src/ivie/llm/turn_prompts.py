@@ -66,7 +66,8 @@ def prompt_narrate_outcome(world_state: str, action: str, action_summary: str, f
                            objective: str, objective_completed: bool, language: str = 'en'):
     previous = "\n\n".join(previous_narrations[-2:]) if previous_narrations else ""
     if language == 'es':
-        objective_rule = ("El jugador ACABA DE CUMPLIR el objetivo: la narración puede reflejar ese logro."
+        objective_rule = (("El jugador ACABA DE CUMPLIR el objetivo: cierra la aventura con un final breve y satisfactorio, "
+                          "basado solo en lo que ocurrió y en los elementos del mundo.")
                           if objective_completed else
                           "El objetivo NO está cumplido: no lo celebres ni digas que la misión terminó o que el misterio está resuelto.")
         arrival = ("El jugador acaba de llegar a este lugar por primera vez: descríbelo con detalle." if arrived and first_visit
@@ -96,7 +97,8 @@ Intención interpretada (contexto, NO son hechos): {action_summary}
 HECHOS DEL MOTOR:
 {facts}"""
     else:
-        objective_rule = ("The player HAS JUST COMPLETED the objective: the narration may reflect that achievement."
+        objective_rule = (("The player HAS JUST COMPLETED the objective: close the adventure with a short, satisfying ending, "
+                          "based only on what happened and on the elements of the world.")
                           if objective_completed else
                           "The objective is NOT completed: do not celebrate it or say the mission is over or the mystery is solved.")
         arrival = ("The player has just arrived here for the first time: describe the place in detail." if arrived and first_visit
