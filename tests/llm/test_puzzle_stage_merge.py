@@ -160,3 +160,32 @@ def test_clues_follow_a_reward_moved_to_its_proposer():
 
     assert merged.characters[0].inventory == ["Gem"]
     assert merged.objective.mystery_clues[0].item_location is None
+
+
+def test_a_key_held_by_a_character_with_no_way_to_get_it_becomes_given():
+    world = _world(mira_inventory=["Key"])
+    stage = PuzzleStageResult(puzzles=[_puzzle()], blocked_passage_additions=[
+        _block(requirement=ItemRequirement(description="k", item_name="Key"))])
+
+    merged, report = merge_puzzle_stage(world, stage)
+
+    assert merged.characters[0].interaction.gives_item == "Key"
+    assert any("no way to get it" in m for m in report.repairs)
+
+
+def test_a_key_that_is_the_reward_of_the_holders_puzzle_is_left_alone():
+    world = _world(mira_inventory=["Key"])
+    stage = PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira", rewards=[ItemReward(description="d", item_name="Key")])],
+        blocked_passage_additions=[_block(requirement=ItemRequirement(description="k", item_name="Key"))])
+
+    merged, _ = merge_puzzle_stage(world, stage)
+
+    assert merged.characters[0].interaction.gives_item is None
+    assert merged.characters[0].interaction.proposes_puzzle == "Riddle"
+
+
+def test_an_item_nobody_needs_is_not_given_away():
+    merged, _ = merge_puzzle_stage(_world(mira_inventory=["Gem"]), PuzzleStageResult(puzzles=[_puzzle()]))
+
+    assert merged.characters[0].interaction is None

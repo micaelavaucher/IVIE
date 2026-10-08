@@ -525,6 +525,47 @@ def reconcile_world_facets(
     return world, report
 
 
+def _give_needed_items(world, report) -> None:
+    """Mark as `gives_item` the needed items a character holds with no other way to get them.
+
+    Playtesting found a captain holding the only key to the objective with no interaction at all:
+    the reasoning model, seeing a proud character with nothing to give, refused every request and
+    the world was stuck. Needed items are passage keys, objective items, mystery clue items and
+    items other characters ask for. A puzzle reward from that same character is a way to get them.
+    """
+    needed = set(_objective_components(world.objective, 'item'))
+    needed |= {clue.associated_item for clue in (world.objective.mystery_clues or [])}
+    for location in world.locations:
+        for blocked in location.blocked_passages:
+            kind, name = _requirement_target(blocked.required_to_unblock)
+            if kind == 'item':
+                needed.add(name)
+    for character in world.characters:
+        for requirement in (character.interaction.requires if character.interaction else []):
+            kind, name = _requirement_target(requirement)
+            if kind == 'item':
+                needed.add(name)
+
+    for character in world.characters:
+        rewarded = {reward.item_name for puzzle in world.puzzles if puzzle.proposed_by_character == character.name
+                    for reward in puzzle.rewards if isinstance(reward, ItemReward)}
+        for item_name in character.inventory:
+            interaction = character.interaction
+            if item_name not in needed or item_name in rewarded:
+                continue
+            if interaction is not None and interaction.gives_item == item_name:
+                continue
+            if interaction is None:
+                character.interaction = CharacterInteraction(
+                    gives_item=item_name, relevance_to_objective=f"Holds '{item_name}', which the player needs.")
+            elif interaction.gives_item is None:
+                interaction.gives_item = item_name
+            else:
+                continue
+            report.repair(f"'{character.name}' holds '{item_name}', which the player needs, with no way to get it; "
+                          f"marked as an item they give")
+
+
 def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None) -> tuple:
     """Fold a PuzzleStageResult into a finished world, adding only what the stage may add.
 
@@ -689,6 +730,9 @@ def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None
             proposer.inventory.append(item_name)
             report.repair(f"reward '{item_name}' of '{puzzle.name}' was not held by its proposer "
                           f"'{proposer.name}'; moved to their inventory")
+
+    # --- A character holding something the player needs must be able to hand it over --------
+    _give_needed_items(world, report)
 
     # --- Keys and rewards must be gettable ------------------------------------------------
     must_be_gettable = {}

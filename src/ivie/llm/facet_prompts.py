@@ -280,6 +280,7 @@ def PROMPT_FACET_OBJECTIVE(concept, skeleton, language: str = 'es', previous_err
 - NO incluyas elementos auxiliares o herramientas como componentes principales
 - Los componentes principales son SOLO la meta final, no los medios para alcanzarla
 - Todo componente DEBE existir con su nombre exacto en las listas de arriba
+- La `description` del objetivo debe corresponder EXACTAMENTE a sus componentes: si el componente es UN objeto, no hables de reunir varios; no menciones elementos que no estén en las listas, ni una cantidad de pistas distinta de las `mystery_clues` que defines
 
 **SI EL OBJETIVO ES UN MISTERIO (type: "solve_mystery"), DEBES incluir:**
 1. **mystery_clues**: al menos 3-5 pistas que el jugador pueda descubrir, que conduzcan lógicamente a la solución
@@ -316,6 +317,7 @@ Ejemplos de completion_narration:
 - Do NOT include auxiliary elements or tools as principal components
 - Principal components are ONLY the final goal, not the means of reaching it
 - Every component MUST exist by its exact name in the lists above
+- The objective's `description` must match its components EXACTLY: if the component is ONE item, do not talk about gathering several; do not mention elements that are not in the lists, nor a number of clues different from the `mystery_clues` you define
 
 **IF THE OBJECTIVE IS A MYSTERY (type: "solve_mystery"), you MUST include:**
 1. **mystery_clues**: at least 3-5 clues the player can discover, leading logically to the solution

@@ -558,6 +558,22 @@ def prompt_world_update_english (world_state: str, input: str):
     return system_msg, user_msg
 
 #---- Incremental Generation Prompts -----------------------------------------
+def world_size_note(language: str = 'es') -> str:
+    """The configured world size, so the concept does not promise more than the world will hold."""
+    locations = config['Size_World']['Locations']
+    objects = config['Size_World']['Objects']
+    npcs = config['Size_World']['NPCs']
+    if language == 'es':
+        return (f"\n**TAMAÑO DEL MUNDO (OBLIGATORIO):** El mundo tendrá {locations} ubicaciones, {objects} objetos y "
+                f"{npcs} personajes además del jugador. El objetivo debe poder cumplirse con UN solo objeto, lugar o "
+                f"personaje, o, si es un misterio, descubriendo pistas en esos objetos. No prometas cantidades que el "
+                f"mundo no puede tener (por ejemplo, 'reunir cinco fragmentos' o 'encontrar tres nodos').\n")
+    return (f"\n**WORLD SIZE (MANDATORY):** The world will have {locations} locations, {objects} items and {npcs} "
+            f"characters besides the player. The objective must be completable with ONE single item, place or "
+            f"character, or, for a mystery, by discovering clues in those items. Do not promise quantities the world "
+            f"cannot hold (e.g. 'gather five fragments' or 'find three nodes').\n")
+
+
 def PROMPT_STEP_1_CONCEPT(language: str = 'es') -> str:
     """Generate the first step prompt for creating a world concept."""
     if language == 'es':
@@ -769,7 +785,7 @@ Concepto del mundo:
 **ESTRUCTURA REQUERIDA:**
 - {locations} ubicaciones: Los lugares más importantes para la historia y el objetivo
 - {objects} objetos: Los elementos físicos esenciales para completar el objetivo
-- {npcs} personajes no jugadores: Los NPCs importantes que ayudarán o desafiarán al jugador
+- {npcs} personajes no jugadores: Los NPCs importantes que ayudarán o desafiarán al jugador. El personaje del jugador NO va en esta lista
 
 **REGLAS PARA EL ESQUELETO:**
 1. **Enfoque en objetivo**: Cada entidad debe tener una conexión clara con el objetivo principal
@@ -797,7 +813,7 @@ World concept:
 **REQUIRED STRUCTURE:**
 - {locations} locations: The most important places for the story and the objective
 - {objects} objects: The essential physical elements to complete the objective
-- {npcs} non-player characters: Key NPCs who will help or challenge the player
+- {npcs} non-player characters: Key NPCs who will help or challenge the player. The player character does NOT go in this list
 
 **RULES FOR THE SKELETON:**
 1. **Objective focus**: Each entity must have a clear connection to the main objective  

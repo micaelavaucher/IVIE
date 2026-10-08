@@ -30,7 +30,7 @@ def run_step_1_concept(theme: str, language, model=None) -> WorldConcept:
         config = load_config()
         reasoning_model_name, _ = get_model_names(config)
         model = get_llm(reasoning_model_name)
-    prompt_text = prompts.PROMPT_STEP_1_CONCEPT_BY_THEME(theme=theme, language=language)
+    prompt_text = prompts.PROMPT_STEP_1_CONCEPT_BY_THEME(theme=theme, language=language) + prompts.world_size_note(language)
     print(f"[DEBUG] Generating world concept with theme: '{theme}'")
     concept_response = model.prompt_model_structured(prompt_text, WorldConcept, max_output_tokens=SMALL_OUTPUT_TOKENS)
 
@@ -51,7 +51,7 @@ def run_step_1_generate_concept(language, model=None) -> WorldConcept:
         config = load_config()
         reasoning_model_name, _ = get_model_names(config)
         model = get_llm(reasoning_model_name)
-    prompt_text = prompts.PROMPT_STEP_1_CONCEPT(language=language)
+    prompt_text = prompts.PROMPT_STEP_1_CONCEPT(language=language) + prompts.world_size_note(language)
     print(f"[DEBUG] Generating a new world concept")
     concept_response = model.prompt_model_structured(prompt_text, WorldConcept, max_output_tokens=SMALL_OUTPUT_TOKENS)
 

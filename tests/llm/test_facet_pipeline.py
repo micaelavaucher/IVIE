@@ -224,3 +224,52 @@ def test_an_unknown_objective_component_is_reported_with_the_valid_names():
     errors = facet_pipeline._verify_objective(facet, roster)
 
     assert "['Capitán Dubois', 'Madame Evangeline']" in errors[0]
+
+
+def _objective_facet(objective_type, components):
+    from src.ivie.llm.structured_data_models import WorldObjectiveFacet
+    return WorldObjectiveFacet.model_validate({**OBJECTIVE, "objective": {
+        **OBJECTIVE["objective"], "type": objective_type,
+        "components": [{"name": n, "component_type": t, "role_in_objective": "g"} for n, t in components]}})
+
+
+def test_a_component_repeated_five_times_is_rejected():
+    from src.ivie.llm.name_matching import NameRoster
+    roster = NameRoster(location=[], item=["Fragmento (1 de 5)"], character=[])
+    facet = _objective_facet("get_item", [("Fragmento (1 de 5)", "item")] * 5)
+
+    errors = facet_pipeline._verify_objective(facet, roster)
+
+    assert any("exactly ONE component" in e for e in errors)
+
+
+def test_deliver_takes_one_item_and_one_recipient():
+    from src.ivie.llm.name_matching import NameRoster
+    roster = NameRoster(location=["Torre"], item=["Corona"], character=["Mago"])
+    ok = _objective_facet("deliver_an_item", [("Corona", "item"), ("Mago", "character")])
+    too_many = _objective_facet("deliver_an_item", [("Corona", "item"), ("Mago", "character"), ("Torre", "location")])
+
+    assert facet_pipeline._verify_objective(ok, roster) == []
+    assert facet_pipeline._verify_objective(too_many, roster)
+
+
+def test_making_a_listed_npc_the_player_is_explained():
+    from src.ivie.llm.structured_data_models import WorldCharactersFacet
+    facet = WorldCharactersFacet.model_validate({
+        "characters": [_character("Sherlock Holmes", "Torre")],
+        "player": _character("Dr. John Watson", "Torre")})
+
+    errors = facet_pipeline._verify_characters(facet, ["Sherlock Holmes", "Dr. John Watson"])
+
+    assert any("you made them the player" in e for e in errors)
+
+
+def test_a_puzzle_nobody_proposes_is_flagged(fake_model):
+    world = facet_pipeline.generate_world_facets(CONCEPT, SKELETON, "es", "fake", parallel=False)
+    unreachable = {**PUZZLES, "puzzles": [dict(PUZZLES["puzzles"][0], proposed_by_character=None, name="Huérfano")],
+                   "blocked_passage_additions": []}
+    fake_model.first_responses["PuzzleStageResult"] = unreachable
+
+    facet_pipeline.run_puzzle_stage(world, "es", fake_model, (1, 1))
+
+    assert "never encounter it" in fake_model.prompts["PuzzleStageResult"][1]

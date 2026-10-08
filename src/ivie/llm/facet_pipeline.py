@@ -189,6 +189,27 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
         needed = {'reach_location': 'location', 'get_item': 'item', 'find_character': 'character'}.get(objective_type)
         if needed and not components.get(needed):
             errors.append(f"A {objective_type} objective needs one component of type '{needed}'.")
+
+    # One principal component: the engine completes the objective with the first one, so repeating a
+    # name ("Fragment (1 of 5)" five times) or listing several made one item complete "gather five"
+    if objective_type != 'solve_mystery':
+        names = [component.name for component in objective.components]
+        limits = {'deliver_an_item': 2}
+        if len(names) != len(set(names)) or len(names) > limits.get(objective_type, 1):
+            errors.append(f"The objective has components {names}, but a {objective_type} objective takes exactly "
+                          f"{'one item and one recipient' if objective_type == 'deliver_an_item' else 'ONE component'}, "
+                          f"each named once. Describe the goal in terms of that single component.")
+    return errors
+
+
+def _verify_characters(facet: WorldCharactersFacet, expected: list) -> list:
+    errors = _check_roster_names([c.name for c in facet.characters], expected, "characters")
+    from .name_matching import normalize_name
+    player = normalize_name(facet.player.name)
+    for name in expected:
+        if name not in [c.name for c in facet.characters] and normalize_name(name) == player:
+            errors.append(f"'{name}' is a non-player character in the list, but you made them the player. Keep "
+                          f"'{name}' as an NPC and create a different player character.")
     return errors
 
 
@@ -271,7 +292,7 @@ def generate_world_facets(concept, skeleton, language, model_name, parallel=True
         'items': (facet_prompts.PROMPT_FACET_ITEMS, WorldItemsFacet, _canonicalize_items,
                   lambda facet: _check_roster_names([i.name for i in facet.items], expected['item'], "items")),
         'characters': (facet_prompts.PROMPT_FACET_CHARACTERS, WorldCharactersFacet, _canonicalize_characters,
-                       lambda facet: _check_roster_names([c.name for c in facet.characters], expected['character'], "characters")),
+                       lambda facet: _verify_characters(facet, expected['character'])),
         'objective': (facet_prompts.PROMPT_FACET_OBJECTIVE, WorldObjectiveFacet, _canonicalize_objective,
                       lambda facet: _verify_objective(facet, roster)),
     }
@@ -321,6 +342,11 @@ def _pointless_challenges(merged, original_world) -> list:
             if isinstance(reward, ItemReward) and reward.item_name in carried:
                 problems.append(f"Puzzle '{puzzle.name}' rewards '{reward.item_name}', which the player already "
                                 f"carries from the start. Reward something the player does not have yet.")
+    gating_puzzles = {getattr(b.required_to_unblock, 'puzzle_name', None) for l in merged.locations for b in l.blocked_passages}
+    for puzzle in merged.puzzles:
+        if not puzzle.proposed_by_character and not puzzle.proposed_by_location and puzzle.name not in gating_puzzles:
+            problems.append(f"Puzzle '{puzzle.name}' has no proposed_by_character, no proposed_by_location item and "
+                            f"no blocked passage that requires it, so the player can never encounter it.")
     existing_blocks = {(l.name, b.location) for l in original_world.locations for b in l.blocked_passages}
     for location in merged.locations:
         for blocked in location.blocked_passages:
