@@ -356,7 +356,9 @@ def process_player_input_structured(world, message, language, reasoning_model, n
     relevant_memories_text = ""
     if memory_system:
         try:
+            step_started = time.perf_counter()
             relevant_memories = memory_system.retrieve_relevant_memories(message, top_k=3)
+            print(f"[TIMING] turno: recuperar memorias {time.perf_counter() - step_started:.1f}s")
             relevant_memories_text = memory_system.format_memories_for_prompt(relevant_memories, language)
         except Exception as e:
             print(f"⚠️ Error retrieving memories: {e}")
@@ -368,7 +370,9 @@ def process_player_input_structured(world, message, language, reasoning_model, n
     try:
         full_prompt = system_msg_update + "\n\n" + user_msg_update
         response_schema = expected_model.model_json_schema()
+        step_started = time.perf_counter()
         response_json = reasoning_model.prompt_model_structured(prompt=full_prompt, response_schema=response_schema)
+        print(f"[TIMING] turno: razonador {time.perf_counter() - step_started:.1f}s")
 
         if isinstance(response_json, dict):
             world_update = WorldUpdate(**response_json)
@@ -391,7 +395,9 @@ def process_player_input_structured(world, message, language, reasoning_model, n
         if memory_system:
             try:
                 world_state_summary = create_world_state_summary(world, message, language)
+                step_started = time.perf_counter()
                 memory_system.ingest_memory(turn_number=number_of_turns, player_action=message, result_narration=world_update.narration, world_state_summary=world_state_summary)
+                print(f"[TIMING] turno: guardar memoria {time.perf_counter() - step_started:.1f}s")
             except Exception as e:
                 print(f"⚠️ Error ingesting memory: {e}")
 
@@ -558,6 +564,7 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
             return puzzle_response
 
         number_of_turns += 1
+        turn_started = time.perf_counter()
         game_log_dictionary[number_of_turns] = {}
 
         visited_locations.add(world.player.location.name)
@@ -567,14 +574,18 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
             number_of_turns, game_log_dictionary, memory_system,
         )
 
+        step_started = time.perf_counter()
         answer, last_player_position = generate_narration(world, last_player_position, response_update, language, narrative_model)
+        print(f"[TIMING] turno: narración de escena {time.perf_counter() - step_started:.1f}s")
         answer = check_objective_completion(world, answer, language)
 
         world_state_formatted = world.format_world_state_for_chat(language=language)
         answer += f"\n\n---\n{world_state_formatted}"
 
         print(f"\n🌎 World state 🌍\n>Player input: {message}\n{world.render_world(language=language)}\n")
+        step_started = time.perf_counter()
         save_game_log(game_log_dictionary, number_of_turns, answer)
+        print(f"[TIMING] turno: guardar traza {time.perf_counter() - step_started:.1f}s | total {time.perf_counter() - turn_started:.1f}s")
 
         return answer.replace("<", r"\<").replace(">", r"\>")
 
