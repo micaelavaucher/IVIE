@@ -97,3 +97,35 @@ def test_objective_command_shows_the_mystery_progress():
 
     assert info.startswith("🎯 Tienes que resolver el misterio: descubre las 2 pistas.")
     assert "1/2 pistas descubiertas" in info
+
+
+class RecordingNarrator(Narrator):
+    def __init__(self):
+        super().__init__()
+        self.user_messages = []
+
+    def prompt_model(self, system_msg, user_msg):
+        self.user_messages.append(user_msg)
+        return super().prompt_model(system_msg, user_msg)
+
+
+def test_the_opening_is_narrated_from_facts(monkeypatch):
+    monkeypatch.setattr(game_logic, "narrate_from_outcome_enabled", lambda config=None: True)
+    narrator = RecordingNarrator()
+    world = example_worlds.get_world("tutorial", language="es")
+
+    game_logic.generate_starting_narration(world, "es", narrator)
+
+    facts = narrator.user_messages[0]
+    assert "El jugador comienza la aventura en Habitación Inicial" in facts
+    assert "El jugador no lleva ningún objeto" in facts
+
+
+def test_the_opening_uses_the_previous_prompt_when_the_option_is_off(monkeypatch):
+    monkeypatch.setattr(game_logic, "narrate_from_outcome_enabled", lambda config=None: False)
+    narrator = RecordingNarrator()
+    world = example_worlds.get_world("tutorial", language="es")
+
+    game_logic.generate_starting_narration(world, "es", narrator)
+
+    assert "HECHOS DEL MOTOR" not in narrator.user_messages[0]

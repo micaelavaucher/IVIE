@@ -239,10 +239,12 @@ class IntelligentMemorySystem:
         
         if language == 'es':
             header = "## Recuerdos Relevantes del Pasado\n"
-            header += "Aquí hay algunos eventos pasados que podrían ser relevantes para la acción actual:\n"
+            header += ("Eventos pasados que podrían ser relevantes. Son contexto: si algo de esto contradice el "
+                       "estado actual del mundo (dónde está cada personaje, qué lleva cada uno), manda el estado actual.\n")
         else:
             header = "## Relevant Past Memories\n"
-            header += "Here are some past events that might be relevant to the current action:\n"
+            header += ("Past events that might be relevant. They are context: if anything here contradicts the current "
+                       "world state (where each character is, what each one carries), the current state wins.\n")
         
         formatted_memories = []
         for memory in memories:

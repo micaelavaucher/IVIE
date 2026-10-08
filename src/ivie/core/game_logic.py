@@ -19,16 +19,37 @@ from ..llm.structured_data_models import WorldUpdate
 from ..llm.memory_system import create_memory_system
 from ..database.mongodb_handler import db_handler
 
+def _narrate_opening_from_facts(world, language, narrative_model):
+    """The opening scene written like any turn: from the engine's facts (where the player starts and
+    what they carry), so it cannot put in the player's pocket an item lying in the room."""
+    from .turn_engine import TurnOutcome
+    location, inventory = world.player.location, [item.name for item in world.player.inventory]
+    facts = TurnOutcome()
+    facts.add('start', True, f"El jugador comienza la aventura en {location.name}",
+              f"The player begins the adventure in {location.name}")
+    facts.add('inventory', True,
+              f"El jugador lleva: {', '.join(inventory)}" if inventory else "El jugador no lleva ningún objeto",
+              f"The player carries: {', '.join(inventory)}" if inventory else "The player carries no items")
+    system_msg, user_msg = prompt_narrate_outcome(
+        world.render_world(language=language, reveal_answers=False),
+        "(comienzo de la aventura)" if language == 'es' else "(start of the adventure)",
+        "", facts.render(language), [], arrived=True, first_visit=True,
+        objective=world.objective_statement(language) if world.objective else "",
+        objective_completed=False, language=language)
+    return narrative_model.prompt_model(system_msg=system_msg, user_msg=user_msg)
+
 def generate_starting_narration(world, language, narrative_model):
     started = time.perf_counter()
-    system_msg_current_scene, user_msg_current_scene = prompt_narrate_current_scene(
-        world.render_world(language=language),
-        previous_narrations=world.player.visited_locations[world.player.location.name],
-        language=language,
-        starting_scene=True,
-    )
-
-    starting_narration = narrative_model.prompt_model(system_msg=system_msg_current_scene, user_msg=user_msg_current_scene)
+    if narrate_from_outcome_enabled():
+        starting_narration = _narrate_opening_from_facts(world, language, narrative_model)
+    else:
+        system_msg_current_scene, user_msg_current_scene = prompt_narrate_current_scene(
+            world.render_world(language=language),
+            previous_narrations=world.player.visited_locations[world.player.location.name],
+            language=language,
+            starting_scene=True,
+        )
+        starting_narration = narrative_model.prompt_model(system_msg=system_msg_current_scene, user_msg=user_msg_current_scene)
     world.player.visited_locations[world.player.location.name] += [starting_narration]
 
     objective = world.objective_statement(language) if getattr(world, 'objective', None) else ""
@@ -527,7 +548,12 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
         try:
             step_started = time.perf_counter()
             world_state_summary = create_world_state_summary(world, message, language)
-            memory_system.ingest_memory(turn_number=number_of_turns, player_action=message, result_narration=narration, world_state_summary=world_state_summary)
+            # The engine's facts are what happened; the narration only adds dialogue and colour
+            facts = "; ".join(event.text(language) for event in outcome.events) or (
+                "ningún cambio" if language == 'es' else "no change")
+            remembered = (f"Hechos: {facts}. Narración: {narration}" if language == 'es'
+                          else f"Facts: {facts}. Narration: {narration}")
+            memory_system.ingest_memory(turn_number=number_of_turns, player_action=message, result_narration=remembered, world_state_summary=world_state_summary)
             print(f"[TIMING] turno: guardar memoria {time.perf_counter() - step_started:.1f}s")
         except Exception as e:
             print(f"⚠️ Error ingesting memory: {e}")

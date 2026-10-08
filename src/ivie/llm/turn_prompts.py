@@ -22,7 +22,9 @@ CÓMO LLENAR CADA CAMPO (usa siempre los nombres EXACTOS del estado del mundo):
 - puzzle_attempts: acertijos a los que el jugador intenta responder en esta acción. No juzgues si la respuesta es correcta.
 - action_summary: una o dos oraciones con lo que hace el jugador y cómo reaccionan los personajes según su descripción y su interacción. No afirmes si las acciones de arriba funcionan.
 
-Incluye todo lo que el jugador intente, aunque creas que no va a funcionar: el motor decide. Si la acción no toca el mundo (una pregunta, mirar alrededor), deja las listas vacías y descríbela en action_summary.
+Incluye todo lo que el jugador intente, aunque creas que no va a funcionar: el motor decide. En particular, si el jugador pide un objeto, inclúyelo SIEMPRE en moved_objects, aunque creas que ya lo tiene o que el personaje no lo va a dar. Si la acción no toca el mundo (una pregunta, mirar alrededor), deja las listas vacías y descríbela en action_summary.
+
+El ESTADO ACTUAL DEL MUNDO manda: quién está en cada lugar y qué lleva cada uno es lo que dice el estado, aunque los recuerdos digan otra cosa.
 
 Tu respuesta debe ser un JSON válido que siga exactamente el modelo TurnIntent. Escribe action_summary en español."""
         user_msg = f"""Estado actual del mundo:
@@ -44,7 +46,9 @@ HOW TO FILL EACH FIELD (always use the EXACT names from the world state):
 - puzzle_attempts: puzzles the player tries to answer in this action. Do not judge whether the answer is right.
 - action_summary: one or two sentences with what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed.
 
-Include everything the player attempts, even if you think it will not work: the engine decides. If the action does not touch the world (a question, looking around), leave the lists empty and describe it in action_summary.
+Include everything the player attempts, even if you think it will not work: the engine decides. In particular, if the player asks for an item, ALWAYS include it in moved_objects, even if you think they already have it or the character will not give it. If the action does not touch the world (a question, looking around), leave the lists empty and describe it in action_summary.
+
+The CURRENT WORLD STATE wins: who is in each place and what each one carries is what the state says, even if the memories say otherwise.
 
 Your answer must be valid JSON following exactly the TurnIntent model. Write action_summary in English."""
         user_msg = f"""Current world state:

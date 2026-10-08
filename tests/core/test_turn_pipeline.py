@@ -96,3 +96,26 @@ def test_a_failed_interpretation_changes_nothing():
 
     assert reply.startswith("NARRACIÓN 1") and world.player.inventory == []
     assert "ningún cambio" in narrator.user_messages[0]
+
+
+def test_memories_store_the_engine_facts_first():
+    class Memory:
+        def __init__(self):
+            self.ingested = []
+
+        def retrieve_relevant_memories(self, message, top_k=3):
+            return []
+
+        def format_memories_for_prompt(self, memories, language):
+            return ""
+
+        def ingest_memory(self, **kwargs):
+            self.ingested.append(kwargs["result_narration"])
+
+    world, narrator, memory = _world(), Narrator(), Memory()
+    reasoner = Reasoner([_intent(moved_objects=[{"object_name": "Llave", "new_location": "Jugador"}])])
+    log = {1: {}}
+
+    game_logic.play_turn_from_outcome(world, "dame la llave", "es", reasoner, narrator, 1, log, memory)
+
+    assert memory.ingested[0].startswith("Hechos: Marlowe le entrega Llave al jugador. Narración: NARRACIÓN 1")
