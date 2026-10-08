@@ -44,3 +44,17 @@ def test_without_player_input_the_old_comparison_applies():
     world.update_from_structured(WorldUpdate(narration="n", puzzles_solved=[
         {"puzzle_name": "Riddle", "answer": "segundo", "success": True}]))
     assert world.puzzle_states["Riddle"] == "solved"
+
+
+def test_an_accepted_answer_solves_the_puzzle():
+    world = _world("El Eco Silente")
+    world.puzzles["Riddle"].accepted_answers = ["eco", "eco silente"]
+
+    assert _attempt(world, "creo que lo que sos es el eco", model_answer="eco")
+
+
+def test_a_puzzle_saved_before_accepted_answers_still_works():
+    world = _world("Segundo")
+    del world.puzzles["Riddle"].accepted_answers  # an old saved world
+
+    assert _attempt(world, "es el segundo", model_answer="x")

@@ -68,6 +68,7 @@ def create_world_from_llm_response(world_data) -> World:
                 relevance_to_objective=getattr(puzzle_data, 'relevance_to_objective', None),
                 puzzle_hints=getattr(puzzle_data, 'puzzle_hints', []),
                 interaction_hint=getattr(puzzle_data, 'interaction_hint', None),
+                accepted_answers=getattr(puzzle_data, 'accepted_answers', []),
             )
             puzzles_dict[puzzle_data.name] = puzzle
 

@@ -70,7 +70,8 @@ class Puzzle (Component):
   def __init__(self, name: str, descriptions: 'list[str]', problem: str, answer: str, 
                puzzle_type: str = "riddle", proposed_by_character: str = None, 
                proposed_by_location: str = None, rewards: list = None, 
-               relevance_to_objective: str = None, puzzle_hints: 'list[dict]' = None, interaction_hint: str = None):
+               relevance_to_objective: str = None, puzzle_hints: 'list[dict]' = None, interaction_hint: str = None,
+               accepted_answers: 'list[str]' = None):
     
     super().__init__(name, descriptions)
     """inherited from Component"""
@@ -99,6 +100,14 @@ class Puzzle (Component):
     self.puzzle_hints = puzzle_hints or []
 
     self.interaction_hint = interaction_hint
+
+    self.accepted_answers = accepted_answers or []
+    """other phrasings of the answer that also solve the puzzle"""
+
+  def is_answered_by(self, text: str) -> bool:
+    """Whether the text contains the answer or one of the accepted phrasings, as whole words."""
+    candidates = [self.answer] + list(getattr(self, 'accepted_answers', None) or [])
+    return any(World.answer_in_text(candidate, text) for candidate in candidates if candidate)
 
 
 class Item (Component):
@@ -1352,7 +1361,7 @@ class World:
       
       if player_input is not None:
           # The player must have said the answer; the model's own `answer` field is not trusted
-          correct = self.answer_in_text(puzzle.answer, player_input)
+          correct = puzzle.is_answered_by(player_input)
           print(f"   Player input contains the answer: {correct}")
       else:
           correct = correct_answer_norm == user_answer_norm
