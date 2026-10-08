@@ -155,6 +155,13 @@ REGLAS GENERALES:
 - **REGLA DE MOVIMIENTO**: El jugador se mueve si intenta explícitamente ir a otra ubicación Y esa ubicación está listada en "From [ubicación actual] the player can access:" en el estado del mundo. Si una ubicación está listada como accesible, el movimiento ES posible.
 - Presta atención a las descripciones, capacidades y requisitos de cada componente
 
+REGLAS DE OBJETOS Y ENTREGAS (CRÍTICAS):
+- Para que el jugador reciba un objeto (lo toma de la ubicación o un personaje se lo da), agrega a "moved_objects": {"object_name": "<nombre exacto del objeto>", "new_location": "<nombre exacto del jugador>"}
+- Para que el jugador le dé un objeto a un personaje, usa como "new_location" el nombre exacto del personaje. Para dejarlo en el lugar, el nombre exacto de la ubicación actual
+- COHERENCIA: la narración solo puede contar que un objeto cambió de manos si ese movimiento está en "moved_objects". Si no lo incluyes, la narración NO puede decir que el jugador lo recibió, lo tomó o lo entregó. Si el jugador intenta usar un objeto que no está en su inventario, la narración debe decir que no lo tiene
+- Lo que da y lo que pide cada personaje figura en "Interacción de <personaje>". Un personaje entrega un objeto que lleva cuando el jugador se lo pide, salvo que tenga un requisito ("Antes de ayudar pide") que el jugador todavía no cumplió o un acertijo propuesto sin resolver. NO inventes requisitos ni objetos que no estén en el estado del mundo
+- Un acertijo se resuelve SOLO si el jugador dice la respuesta en su acción. Nunca reveles la respuesta en la narración ni la pongas en "puzzles_solved" si el jugador no la dijo
+
 REGLAS PARA NARRACIÓN RICA:
 - **USA LAS DESCRIPCIONES**: El estado del mundo incluye descripciones detalladas de ubicaciones, objetos y personajes. Úsalas para crear narraciones vívidas y evocativas.
 - **DETALLES SENSORIALES**: Incorpora sonidos, olores, texturas, y sensaciones visuales basándote en las descripciones disponibles.
@@ -182,7 +189,7 @@ Tu respuesta debe ser un JSON válido que siga exactamente el modelo WorldUpdate
 Devuelve un objeto JSON con la siguiente estructura:
 {{
     "moved_objects": [
-        {{"object_name": "nombre", "new_location": "ubicación"}}
+        {{"object_name": "nombre", "new_location": "nombre exacto del jugador, de un personaje o de una ubicación"}}
     ],
     "blocked_passages_available": [
         {{"location_name": "ubicación", "is_available": true}}
@@ -241,6 +248,13 @@ GENERAL RULES:
 - **MOVEMENT RULE**: The player moves if they explicitly attempt to go to another location AND that location is listed in "From [current location] the player can access:" in the world state. If a location is listed as accessible, movement IS possible.
 - Pay attention to the descriptions, capabilities, and requirements of each component
 
+RULES FOR ITEMS AND HAND-OVERS (CRITICAL):
+- For the player to receive an item (taking it from the location or a character giving it), add to "moved_objects": {"object_name": "<exact item name>", "new_location": "<exact player name>"}
+- For the player to give an item to a character, use the character's exact name as "new_location". To leave it in the place, the exact name of the current location
+- CONSISTENCY: the narration may only say an item changed hands if that move is in "moved_objects". If you do not include it, the narration must NOT say the player received, took or handed over the item. If the player tries to use an item that is not in their inventory, the narration must say they do not have it
+- What each character gives and asks for is listed under "Interaction of <character>". A character hands over an item they carry when the player asks for it, unless they have a requirement ("Before helping, requires") the player has not met yet or a proposed puzzle that is still unsolved. Do NOT invent requirements or items that are not in the world state
+- A puzzle is solved ONLY if the player says the answer in their action. Never reveal the answer in the narration, and never put it in "puzzles_solved" if the player did not say it
+
 RULES FOR RICH NARRATION:
 - **USE THE DESCRIPTIONS**: The world state includes detailed descriptions of locations, objects, and characters. Use them to create vivid and evocative narrations.
 - **SENSORY DETAILS**: Incorporate sounds, smells, textures, and visual sensations based on available descriptions.
@@ -265,7 +279,7 @@ Your response must be valid JSON that follows exactly the WorldUpdate model."""
 Return a JSON object with the following structure:
 {{
     "moved_objects": [
-        {{"object_name": "name", "new_location": "location"}}
+        {{"object_name": "name", "new_location": "exact name of the player, a character or a location"}}
     ],
     "blocked_passages_available": [
         {{"location_name": "location", "is_available": true}}

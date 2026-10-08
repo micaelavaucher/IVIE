@@ -611,6 +611,7 @@ class World:
             items_in_the_scene+= character.inventory
           else:
             details += "\n"
+          details += self._render_interaction(character, 'es')
       if len(items_in_the_scene)>0:
         details+="Objetos:\n"
         for item in items_in_the_scene:
@@ -673,6 +674,7 @@ class World:
             items_in_the_scene+= character.inventory
           else:
             details += "\n"
+          details += self._render_interaction(character, 'en')
       if len(items_in_the_scene)>0:
         details+="Objects:\n"
         for item in items_in_the_scene:
@@ -897,6 +899,40 @@ class World:
     for hint in self.current_hints:
         if isinstance(hint, dict):
             hint["given"] = False
+
+  def _render_interaction(self, character, language: str) -> str:
+    """What the character gives, asks for and proposes, for the reasoning model.
+
+    Without this the model only saw a character's inventory, so it improvised conditions
+    ("bring me the amulet") or refused to hand over items the world says it gives freely.
+    """
+    interaction = getattr(character, 'interaction', None)
+    if interaction is None:
+      return ""
+    es = language == 'es'
+    parts = []
+    text = getattr(interaction, 'interaction_text', None)
+    if text:
+      parts.append((f'Al hablarle dice: "{text}"' if es else f'When spoken to, says: "{text}"'))
+    gives = getattr(interaction, 'gives_item', None)
+    if gives:
+      parts.append((f"Entrega al jugador: {gives}" if es else f"Gives the player: {gives}"))
+    requires = []
+    for requirement in getattr(interaction, 'requires', None) or []:
+      target = (getattr(requirement, 'item_name', None) or getattr(requirement, 'puzzle_name', None)
+                or getattr(requirement, 'character_name', None) or getattr(requirement, 'location_name', None))
+      requires.append(f"{getattr(requirement, 'description', '')} ({target})" if target else getattr(requirement, 'description', ''))
+    if requires:
+      parts.append((f"Antes de ayudar pide: {'; '.join(requires)}" if es else f"Before helping, requires: {'; '.join(requires)}"))
+    proposed = getattr(interaction, 'proposes_puzzle', None)
+    if proposed:
+      state = self.puzzle_states.get(proposed, 'not_proposed')
+      parts.append((f"Propone el acertijo '{proposed}' (estado: {state})" if es
+                    else f"Proposes the puzzle '{proposed}' (state: {state})"))
+    if not parts:
+      return ""
+    label = "  Interacción de" if es else "  Interaction of"
+    return f"{label} {character.name}: " + ". ".join(parts) + ".\n"
 
   def _is_player_destination(self, name: str) -> bool:
     """Whether a moved object's destination means "the player" ("Player Inventory", "inventario del jugador", the player's name...)."""
