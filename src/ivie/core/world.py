@@ -255,9 +255,9 @@ class World:
     
     # Default exploration hints
     self.default_explore_hints = [
-        {"text": "explore the world", "given": False},
-        {"text": "try interacting with characters and objects", "given": False},
-        {"text": "try investigating objects and asking things to characters", "given": False}
+        {"text": "Explore the places you can reach.", "text_es": "Explora los lugares a los que puedes ir.", "given": False},
+        {"text": "Talk to the characters and examine the objects around you.", "text_es": "Habla con los personajes y examina los objetos que te rodean.", "given": False},
+        {"text": "Ask characters for what they carry, and try using the objects you have.", "text_es": "Pide a los personajes lo que llevan y prueba usar los objetos que tienes.", "given": False}
     ]
     
     # Puzzle state tracking
@@ -895,14 +895,44 @@ class World:
         if puzzle_hints:
             self.current_hints = puzzle_hints
 
-  def get_next_hint(self) -> str:
+  def get_next_hint(self, language: str = 'en') -> str:
     for hint in self.current_hints:
         if not hint["given"]:
             hint["given"] = True
-            return hint["text"]
+            # Generated hints are already in the world's language; the default ones carry both
+            return hint.get("text_es", hint["text"]) if language == 'es' else hint["text"]
     
     # If all hints have been given, return a generic message
+    if language == 'es':
+        return "Sigue explorando y probando acciones distintas. ¡Vas por buen camino!"
     return "Keep exploring and trying different actions. You're on the right track!"
+
+  def objective_statement(self, language: str = 'en') -> str:
+    """The objective as one sentence built from the objective's own components.
+
+    Built here instead of by a language model so it always names the real element and, for a
+    mystery, the real number of clues (the model paraphrased "Orbe Armónico" as "la bola mágica").
+    """
+    if not self.objective:
+      return ""
+    first, second = self.objective[0], self.objective[1]
+    kinds = (first.__class__.__name__, second.__class__.__name__)
+    es = language == 'es'
+    if kinds[1] == 'MysteryObjective':
+      total = len(second.clues)
+      return (f"Tienes que resolver el misterio: descubre las {total} pistas." if es
+              else f"You have to solve the mystery: discover the {total} clues.")
+    templates = {
+      ('Character', 'Location'): ("Tienes que llegar a {1}.", "You have to reach {1}."),
+      ('Character', 'Item'): ("Tienes que conseguir {1}.", "You have to get {1}."),
+      ('Character', 'Character'): ("Tienes que encontrar a {1}.", "You have to find {1}."),
+      ('Item', 'Location'): ("Tienes que llevar {0} a {1}.", "You have to take {0} to {1}."),
+      ('Item', 'Character'): ("Tienes que entregarle {0} a {1}.", "You have to give {0} to {1}."),
+    }
+    template = templates.get(kinds)
+    if template is None:
+      return ""
+    return (template[0] if es else template[1]).format(first.name, second.name)
 
   def reset_hints(self):
     for hint in self.current_hints:

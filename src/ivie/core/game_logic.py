@@ -7,12 +7,9 @@ and game-related utility functions with intelligent memory integration.
 import re
 import jsonpickle
 import time
-from concurrent.futures import ThreadPoolExecutor
 import streamlit as st
 
-from ..llm.generation_pipeline import get_generation_flags
-from ..llm.models import get_llm
-from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured, prompt_describe_objective
+from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured
 from .world_builder import generate_world_overview, generate_objective_validation_report
 from .world_utils import create_world_state_summary
 from ..llm.structured_data_models import WorldUpdate
@@ -28,57 +25,12 @@ def generate_starting_narration(world, language, narrative_model):
         starting_scene=True,
     )
 
-    # The objective narration does not depend on the scene narration, so with the Parallel option
-    # both calls run at once (the second one with its own client)
-    has_objective = hasattr(world, 'objective') and world.objective
-    objective_executor = None
-    objective_future = None
-    if has_objective:
-        system_msg_objective, user_msg_objective = prompt_describe_objective(world.objective, language=language)
-        if get_generation_flags()['parallel']:
-            objective_model = get_llm(narrative_model.model_name) if hasattr(narrative_model, 'model_name') else None
-            objective_executor = ThreadPoolExecutor(max_workers=1)
-            objective_future = objective_executor.submit(
-                (objective_model or narrative_model).prompt_model,
-                system_msg=system_msg_objective, user_msg=user_msg_objective,
-            )
-
     starting_narration = narrative_model.prompt_model(system_msg=system_msg_current_scene, user_msg=user_msg_current_scene)
     world.player.visited_locations[world.player.location.name] += [starting_narration]
 
-    if has_objective:
-        if objective_future is not None:
-            narrated_objective = objective_future.result()
-            objective_executor.shutdown()
-        else:
-            narrated_objective = narrative_model.prompt_model(system_msg=system_msg_objective, user_msg=user_msg_objective)
-        try:
-            if narrated_objective:
-                objective_texts = re.findall(r'#([^#]*?)#', str(narrated_objective))
-                if objective_texts:
-                    narrated_objective = " ".join([t.strip() for t in objective_texts])
-                    if len(narrated_objective.split()) < 8 or not narrated_objective.strip().endswith(('.', '!', '?')):
-                        print("⚠️ Objective seems incomplete, using full LLM response instead.")
-                        if not narrated_objective.strip().endswith(('.', '!', '?')):
-                            narrated_objective += '.'
-                        starting_narration += f"\n\n🎯 {narrated_objective}"
-                    else:
-                        starting_narration += f"\n\n🎯 {narrated_objective}"
-                else:
-                    # Without the #...# format the model may add an introduction ("Here is another way
-                    # to narrate the objective:"); the sentence itself is the last line
-                    lines = [line.strip(" *-•\t") for line in str(narrated_objective).splitlines() if line.strip(" *-•\t")]
-                    narrated_objective = lines[-1] if lines else str(narrated_objective)
-                    if not narrated_objective.strip().endswith(('.', '!', '?')):
-                        narrated_objective += '.'
-                    starting_narration += f"\n\n🎯 {narrated_objective}"
-            else:
-                raise IndexError
-        except (IndexError, TypeError):
-            print("⚠️ No se pudo extraer el objetivo narrado con el formato #...#, usando la respuesta completa.")
-            if not narrated_objective.strip().endswith(('.', '!', '?')):
-                narrated_objective += '.'
-            starting_narration += f"\n\n🎯 {narrated_objective}"
+    objective = world.objective_statement(language) if getattr(world, 'objective', None) else ""
+    if objective:
+        starting_narration += f"\n\n🎯 {objective}"
     else:
         print("ℹ️ No se encontró un objetivo principal en el mundo generado/cargado.")
 
@@ -163,12 +115,14 @@ def get_objective_info(world, language):
     elif isinstance(world.objective, tuple) and len(world.objective) >= 2:
         # Legacy tuple format
         obj_component = world.objective[1]
-        if hasattr(obj_component, 'description'):
+        # A MysteryObjective also has a description; it is handled below, with its progress
+        if hasattr(obj_component, 'description') and obj_component.__class__.__name__ != 'MysteryObjective':
             raw_objective = obj_component.description
         elif hasattr(obj_component, '__class__') and obj_component.__class__.__name__ == 'MysteryObjective':
             # Special handling for mystery objectives
             mystery_obj = obj_component
-            raw_objective = mystery_obj.description
+            # The sentence states the real number of clues; the generated description may not
+            raw_objective = f"🎯 {world.objective_statement(language)}" + chr(10) * 2 + mystery_obj.description
             discovered, total = mystery_obj.get_completion_progress()
             if language == 'es':
                 raw_objective += f"\n\n🔍 **Progreso del Misterio:** {discovered}/{total} pistas descubiertas"
@@ -321,10 +275,24 @@ def check_character_puzzle_mention(world, message, language):
                     return response
     return None
 
+# Commands are recognized by the whole message, not by a word inside it: "examino la Pista del
+# Zafiro" is an action on an item called "Pista del Zafiro", not a request for help
+HINT_COMMANDS = {
+    "pista", "ayuda", "una pista", "dame una pista", "pido una pista", "quiero una pista", "necesito una pista",
+    "necesito ayuda", "ayudame", "hint", "help", "clue", "a hint", "give me a hint", "i need a hint",
+    "i need help", "help me",
+}
+
+
+def _command(message):
+    from ..llm.name_matching import normalize_name
+    return " ".join(normalize_name(message or "").split())
+
+
 def handle_debug_command(message, world, language):
     message_lower = message.lower()
-    if any(word in message_lower for word in ["hint", "pista", "help", "ayuda", "clue", "piste"]):
-        hint = world.get_next_hint()
+    if _command(message) in HINT_COMMANDS:
+        hint = world.get_next_hint(language)
         return f"💡 **Pista:** {hint}" if language == 'es' else f"💡 **Hint:** {hint}"
 
     if message_lower in ["inspect", "inspeccionar", "inspect world", "inspeccionar mundo"]:
