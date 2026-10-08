@@ -273,3 +273,32 @@ def test_a_puzzle_nobody_proposes_is_flagged(fake_model):
     facet_pipeline.run_puzzle_stage(world, "es", fake_model, (1, 1))
 
     assert "never encounter it" in fake_model.prompts["PuzzleStageResult"][1]
+
+
+def test_a_failed_assembly_gets_one_new_skeleton(monkeypatch, fake_model):
+    monkeypatch.setattr(generation_pipeline, "get_llm", lambda name: fake_model)
+    monkeypatch.setattr(generation_pipeline, "get_generation_flags",
+                        lambda config=None: {"facets": True, "puzzle_stage_only": True, "parallel": False})
+    real = facet_pipeline.generate_world_facets
+    calls = []
+
+    def fails_once(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("Failed to generate a valid 'objective' facet")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(facet_pipeline, "generate_world_facets", fails_once)
+
+    world = generation_pipeline.create_world_incrementally("tema", "es")
+
+    assert len(calls) == 2 and len(fake_model.prompts["WorldSkeleton"]) == 2
+    assert len(world.locations) == 4
+
+
+def test_a_skeleton_name_with_a_newline_is_rejected():
+    broken = SKELETON.model_copy(deep=True)
+    broken.key_locations[0].name = "Anticuario 'El Cron\nmetro Roto'"
+
+    assert generation_pipeline.skeleton_names_are_unique(SKELETON)
+    assert not generation_pipeline.skeleton_names_are_unique(broken)

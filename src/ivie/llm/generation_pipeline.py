@@ -240,15 +240,8 @@ def create_world_incrementally_generate(language: str, progress_callback=None) -
 
     return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
 
-def _create_world_from_concept(concept, language, model, model_name, progress_callback, started) -> GeneratedWorld:
-    """Steps 2-4, shared by Inspiration and Generate modes."""
-    flags = get_generation_flags()
-    print(f"⚙️ Generation options: {flags}")
-    max_attempts = 3
-
-    # Paso 2: Crear el esqueleto con entidades clave (with verification)
-    _report(progress_callback, "🦴 Paso 2: Creando esqueleto del mundo...")
-    step_started = time.perf_counter()
+def _generate_skeleton(concept, language, model, progress_callback, max_attempts=3):
+    """Step 2 with its size and uniqueness checks."""
     skeleton = None
     for attempt in range(1, max_attempts + 1):
         skeleton = run_step_2_skeleton(concept, language, model)
@@ -275,6 +268,18 @@ def _create_world_from_concept(concept, language, model, model_name, progress_ca
             skeleton = None
     if skeleton is None:
         raise ValueError("Failed to generate a valid skeleton after multiple attempts.")
+    return skeleton
+
+def _create_world_from_concept(concept, language, model, model_name, progress_callback, started) -> GeneratedWorld:
+    """Steps 2-4, shared by Inspiration and Generate modes."""
+    flags = get_generation_flags()
+    print(f"⚙️ Generation options: {flags}")
+    max_attempts = 3
+
+    # Paso 2: Crear el esqueleto con entidades clave (with verification)
+    _report(progress_callback, "🦴 Paso 2: Creando esqueleto del mundo...")
+    step_started = time.perf_counter()
+    skeleton = _generate_skeleton(concept, language, model, progress_callback, max_attempts)
     _log_timing("Paso 2 (esqueleto)", step_started)
     _report(progress_callback, f"✅ Esqueleto creado con {len(skeleton.key_locations)} ubicaciones, {len(skeleton.key_items)} objetos y {len(skeleton.key_characters)} personajes")
 
@@ -283,7 +288,14 @@ def _create_world_from_concept(concept, language, model, model_name, progress_ca
     step_started = time.perf_counter()
     if flags['facets']:
         from .facet_pipeline import generate_world_facets
-        world_basic = generate_world_facets(concept, skeleton, language, model_name, parallel=flags['parallel'])
+        try:
+            world_basic = generate_world_facets(concept, skeleton, language, model_name, parallel=flags['parallel'])
+        except ValueError as error:
+            # Usually the skeleton left out what the concept is about (the stolen jewel, the missing
+            # scientist) and the objective facet keeps naming it; a new skeleton gets one more chance
+            _report(progress_callback, f"[WARNING] Could not assemble the world ({error}). Regenerating the skeleton once...")
+            skeleton = _generate_skeleton(concept, language, model, progress_callback, max_attempts)
+            world_basic = generate_world_facets(concept, skeleton, language, model_name, parallel=flags['parallel'])
     else:
         world_basic = None
         for attempt in range(1, max_attempts + 1):
@@ -356,11 +368,18 @@ def _create_world_from_concept(concept, language, model, model_name, progress_ca
     return world_with_puzzles
 
 def skeleton_names_are_unique(skeleton: WorldSkeleton) -> bool:
-    """Names identify entities everywhere downstream, so two entities of a kind cannot share one."""
+    """Names identify entities everywhere downstream, so two entities of a kind cannot share one,
+    and a name cannot carry control characters (one came back as "Cron
+metro" for "Cronómetro",
+    so no facet could match it)."""
     for entities in (skeleton.key_locations, skeleton.key_items, skeleton.key_characters):
         names = [entity.name for entity in entities]
         if len(names) != len(set(names)):
             print(f"[ERROR] Skeleton has duplicate names: {names}")
+            return False
+        broken = [name for name in names if any(ord(char) < 32 for char in name)]
+        if broken:
+            print(f"[ERROR] Skeleton has names with control characters: {broken}")
             return False
     return True
 

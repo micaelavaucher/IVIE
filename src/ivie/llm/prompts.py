@@ -799,6 +799,7 @@ Concepto del mundo:
 1. **Enfoque en objetivo**: Cada entidad debe tener una conexión clara con el objetivo principal
 2. **Ruta lógica**: Debe existir una secuencia lógica de ubicaciones y elementos para alcanzar el objetivo
 3. **Dependencias claras**: Los objetos y personajes deben formar una cadena de dependencias hacia el objetivo
+4. **La meta está en la lista**: lo que el jugador debe conseguir, encontrar o alcanzar para cumplir el objetivo principal (por ejemplo, la joya robada, la persona desaparecida o el lugar de destino) DEBE ser una de las entidades, con el mismo nombre que usa el objetivo
 
 Para cada entidad, especifica su nombre y su propósito/rol en el mundo. Piensa en términos de la ruta principal hacia el objetivo y cómo cada elemento contribuye a esa ruta.
 
@@ -827,6 +828,7 @@ World concept:
 1. **Objective focus**: Each entity must have a clear connection to the main objective  
 2. **Logical path**: There must be a logical sequence of locations and items to reach the objective  
 3. **Clear dependencies**: Objects and characters must form a chain of dependencies toward the objective
+4. **The goal is on the list**: whatever the player must obtain, find or reach to complete the main objective (e.g. the stolen jewel, the missing person, the destination) MUST be one of the entities, with the same name the objective uses
 
 For each entity, specify its name and its purpose/role in the world. Think in terms of the main path toward the objective and how each element contributes to that path.
 
