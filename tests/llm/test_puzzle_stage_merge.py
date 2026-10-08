@@ -42,7 +42,7 @@ def _world(items_in_hall=(), mira_inventory=(), items=("Gem", "Key")):
 
 def _puzzle(name="Riddle", proposer=None, rewards=None, location=None):
     return GeneratedPuzzle(
-        name=name, puzzle_type="riddle", descriptions=["d"], problem="p", answer="a",
+        name=name, puzzle_type="riddle", descriptions=["d"], problem="¿Qué tiene agujas pero no cose?", answer="reloj",
         location=location, proposed_by_character=proposer, rewards=rewards or [],
         relevance_to_objective="r", hint="h")
 
@@ -189,3 +189,31 @@ def test_an_item_nobody_needs_is_not_given_away():
     merged, _ = merge_puzzle_stage(_world(mira_inventory=["Gem"]), PuzzleStageResult(puzzles=[_puzzle()]))
 
     assert merged.characters[0].interaction is None
+
+
+def test_a_puzzle_nobody_presents_is_given_to_the_character_at_its_location():
+    merged, report = merge_puzzle_stage(_world(), PuzzleStageResult(puzzles=[_puzzle(location="Hall")]))
+
+    assert merged.puzzles[0].proposed_by_character == "Mira"
+    assert merged.characters[0].interaction.proposes_puzzle == "Riddle"
+
+
+def test_without_a_character_an_item_at_its_location_presents_it():
+    world = _world(items_in_hall=["Gem"])
+    world.characters[0].location = "Vault"
+
+    merged, _ = merge_puzzle_stage(world, PuzzleStageResult(puzzles=[_puzzle(location="Hall")]))
+
+    assert merged.puzzles[0].proposed_by_location == "Gem"
+
+
+def test_dropping_a_puzzle_unblocks_its_passage():
+    from src.ivie.llm.facet_reconciler import drop_puzzles
+    merged, _ = merge_puzzle_stage(_world(), PuzzleStageResult(
+        puzzles=[_puzzle(proposer="Mira")], blocked_passage_additions=[_block()]))
+
+    dropped, report = drop_puzzles(merged, ["Riddle"])
+
+    assert dropped.puzzles == [] and dropped.locations[0].blocked_passages == []
+    assert "Vault" in dropped.locations[0].connecting_locations
+    assert dropped.characters[0].interaction.proposes_puzzle is None

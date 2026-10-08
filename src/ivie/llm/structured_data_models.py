@@ -103,7 +103,7 @@ class GeneratedPuzzle(BaseModel):
     name: str = Field(description="Unique name of the puzzle")
     puzzle_type: PuzzleType = Field(description="Type of puzzle")
     descriptions: List[str] = Field(description="List of descriptive texts explaining the puzzle")
-    problem: str = Field(description="Clear statement of the puzzle problem")
+    problem: str = Field(description="Exactly what the player is told: the actual riddle, question or challenge to answer, not an instruction such as 'solve the riddle'. Must not contain the answer")
     answer: str = Field(description="The solution to the puzzle: a single word or a very short phrase")
     accepted_answers: List[str] = Field(default=[], description="Other ways a player may phrase the same answer: the key word alone, without articles, obvious synonyms. Short, each one a correct answer")
     location: Optional[str] = Field(default=None, description="Location where puzzle is found, or None if given by character. Note: if specified, this location must exist in the world")

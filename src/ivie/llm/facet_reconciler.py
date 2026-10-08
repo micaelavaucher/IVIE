@@ -566,6 +566,32 @@ def _give_needed_items(world, report) -> None:
                           f"marked as an item they give")
 
 
+def drop_puzzles(world, names) -> tuple:
+    """Remove puzzles from a world, with the passages they gate (which stay connected, unblocked)
+    and the characters' references to them. Rewards stay where they are; a character no longer
+    withholds an item as the reward of a puzzle that does not exist."""
+    report = ReconciliationReport()
+    names = set(names)
+    world = world.model_copy(deep=True)
+    for puzzle in world.puzzles:
+        if puzzle.name in names:
+            report.repair(f"puzzle '{puzzle.name}' dropped: it could not be played")
+    world.puzzles = [puzzle for puzzle in world.puzzles if puzzle.name not in names]
+    for location in world.locations:
+        kept = []
+        for blocked in location.blocked_passages:
+            kind, name = _requirement_target(blocked.required_to_unblock)
+            if kind == 'puzzle' and name in names:
+                report.repair(f"passage '{location.name}' -> '{blocked.location}' unblocked: its puzzle was dropped")
+                continue
+            kept.append(blocked)
+        location.blocked_passages = kept
+    for character in world.characters:
+        if character.interaction is not None and character.interaction.proposes_puzzle in names:
+            character.interaction.proposes_puzzle = None
+    return world, report
+
+
 def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None) -> tuple:
     """Fold a PuzzleStageResult into a finished world, adding only what the stage may add.
 
@@ -684,6 +710,25 @@ def merge_puzzle_stage(world, stage_result, *, max_puzzles: Optional[int] = None
         destination = locations_by_name[addition.passage.location]
         if origin.name not in destination.connecting_locations:
             destination.connecting_locations.append(origin.name)
+
+    # --- Every puzzle needs someone or something that presents it --------------------------
+    # A puzzle nobody proposes and no passage requires can never be encountered. If it has a
+    # location, whoever is there presents it: a character, or else an item lying there.
+    gating = {name for location in world.locations for blocked in location.blocked_passages
+              for kind, name in [_requirement_target(blocked.required_to_unblock)] if kind == 'puzzle'}
+    for puzzle in world.puzzles:
+        if puzzle.proposed_by_character or puzzle.proposed_by_location or puzzle.name in gating:
+            continue
+        location = locations_by_name.get(puzzle.location or "")
+        if location is None:
+            continue
+        character = next((c for c in world.characters if c.location == location.name), None)
+        if character is not None:
+            puzzle.proposed_by_character = character.name
+            report.repair(f"puzzle '{puzzle.name}' had nobody to present it; proposed by '{character.name}', who is at '{location.name}'")
+        elif location.items:
+            puzzle.proposed_by_location = location.items[0]
+            report.repair(f"puzzle '{puzzle.name}' had nobody to present it; proposed by the item '{location.items[0]}' at '{location.name}'")
 
     # --- Derive each character's proposes_puzzle from the puzzles themselves -------------
     # `puzzle.proposed_by_character` already carries this fact, so the stage never has to

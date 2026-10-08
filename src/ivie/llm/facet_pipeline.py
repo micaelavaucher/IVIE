@@ -20,7 +20,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import facet_prompts
-from .facet_reconciler import reconcile_world_facets, merge_puzzle_stage, _distances_from
+from .facet_reconciler import reconcile_world_facets, merge_puzzle_stage, drop_puzzles, _distances_from
 from .generation_pipeline import (
     FACET_OUTPUT_TOKENS,
     verify_location_connectivity,
@@ -29,7 +29,7 @@ from .generation_pipeline import (
     place_unplaced_required_items,
 )
 from .models import get_llm
-from .name_matching import NameRoster
+from .name_matching import NameRoster, normalize_name
 from .structured_data_models import (
     ItemReward,
     PassageReward,
@@ -348,11 +348,6 @@ def _pointless_challenges(merged, original_world) -> list:
             if isinstance(reward, ItemReward) and reward.item_name in carried:
                 problems.append(f"Puzzle '{puzzle.name}' rewards '{reward.item_name}', which the player already "
                                 f"carries from the start. Reward something the player does not have yet.")
-    gating_puzzles = {getattr(b.required_to_unblock, 'puzzle_name', None) for l in merged.locations for b in l.blocked_passages}
-    for puzzle in merged.puzzles:
-        if not puzzle.proposed_by_character and not puzzle.proposed_by_location and puzzle.name not in gating_puzzles:
-            problems.append(f"Puzzle '{puzzle.name}' has no proposed_by_character, no proposed_by_location item and "
-                            f"no blocked passage that requires it, so the player can never encounter it.")
     existing_blocks = {(l.name, b.location) for l in original_world.locations for b in l.blocked_passages}
     for location in merged.locations:
         for blocked in location.blocked_passages:
@@ -363,22 +358,53 @@ def _pointless_challenges(merged, original_world) -> list:
     return problems
 
 
+_PUZZLE_WORDS = {"acertijo", "enigma", "adivinanza", "riddle", "puzzle"}
+
+
+def unplayable_puzzles(world) -> dict:
+    """{puzzle name: reason} for puzzles a player cannot actually play.
+
+    - Nobody presents it: no character, no item, no blocked passage (merge_puzzle_stage repairs
+      what it can; what is left has no location to anchor it).
+    - Its statement is not a question: it only refers to a puzzle ("Solve Elara's riddle to gain her
+      trust") instead of stating it, so there is nothing to answer.
+    - Its statement contains its own answer.
+    """
+    gating = {getattr(blocked.required_to_unblock, 'puzzle_name', None)
+              for location in world.locations for blocked in location.blocked_passages}
+    problems = {}
+    for puzzle in world.puzzles:
+        statement = (puzzle.problem or "").strip()
+        statement_words = f" {normalize_name(statement)} "
+        answer_words = normalize_name(puzzle.answer or "")
+        if not puzzle.proposed_by_character and not puzzle.proposed_by_location and puzzle.name not in gating:
+            problems[puzzle.name] = "nobody presents it: set proposed_by_character, or proposed_by_location to an item"
+        elif len(statement) < 15 or (set(statement_words.split()) & _PUZZLE_WORDS
+                                      and "?" not in statement and ":" not in statement):
+            problems[puzzle.name] = ("its `problem` does not state the actual question; write the exact riddle or "
+                                     "challenge the player must answer, not an instruction like 'solve the riddle'")
+        elif answer_words and len(answer_words) >= 3 and f" {answer_words} " in statement_words:
+            problems[puzzle.name] = "its `problem` contains its own answer"
+    return problems
+
+
 def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
     """Step 4: add puzzles and blocked passages to a finished world without rewriting it.
 
     Hard errors (no valid puzzle, broken connectivity or objective) are retried and finally fail
-    the generation. Soft ones (a puzzle or block the player gets past for free) get one retry;
-    the first acceptable result is kept, since a pointless puzzle is not worth failing a world over.
+    the generation. Quality issues get one retry with the reasons fed back; after that the result is
+    accepted, and any puzzle that still cannot be played is dropped with the passages it gates: a
+    world with one puzzle fewer is playable, a world with an unplayable puzzle is not.
     """
     min_puzzles, max_puzzles = puzzle_range
     puzzle_count = str(min_puzzles) if min_puzzles == max_puzzles else f"{min_puzzles}-{max_puzzles}"
     world_json = world.model_dump_json(indent=2)
 
     previous_errors = None
-    acceptable = None
+    fallback = None
     for attempt in range(1, max_attempts + 1):
         started = time.perf_counter()
-        errors, soft_errors = [], []
+        errors, minor, unplayable = [], [], {}
         merged = None
         try:
             prompt = facet_prompts.PROMPT_PUZZLE_STAGE(world_json, puzzle_count, language, previous_errors=previous_errors)
@@ -407,24 +433,35 @@ def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
                 errors.append("The blocked passages left some locations unreachable.")
             if not verify_objective_completability(merged):
                 errors.append("After adding the puzzles, the objective can no longer be completed.")
-            soft_errors = _pointless_challenges(merged, world)
+            minor = _pointless_challenges(merged, world)
+            unplayable = unplayable_puzzles(merged)
         except Exception as error:
             errors.append(f"Invalid output: {_short(error)}")
 
         print(f"[TIMING] etapa de puzzles (intento {attempt}): {time.perf_counter() - started:.1f}s")
-        if not errors and not soft_errors:
+        if not errors and not minor and not unplayable:
             return merged
         if not errors:
-            if acceptable is not None:
-                print(f"[WARNING] Puzzle stage accepted with minor issues: {soft_errors}")
-                return merged
-            acceptable = merged
-        elif acceptable is not None:
+            candidate = merged
+            if unplayable:
+                candidate, drop_report = drop_puzzles(merged, unplayable)
+            if fallback is not None or attempt == max_attempts:
+                # Quality issues already had their retry: keep this result, minus unplayable puzzles
+                if unplayable:
+                    drop_report.log("[PUZZLES]")
+                print(f"[WARNING] Puzzle stage accepted with issues: {minor + list(unplayable.values())}")
+                return candidate
+            fallback = (candidate, unplayable)
+        elif fallback is not None:
             print("[WARNING] Puzzle stage retry failed; keeping the earlier acceptable result")
-            return acceptable
-        print(f"[WARNING] Puzzle stage rejected on attempt {attempt}: {errors + soft_errors}")
-        previous_errors = errors + soft_errors
+            candidate, dropped = fallback
+            if dropped:
+                print(f"[PUZZLES] dropped unplayable puzzles: {list(dropped)}")
+            return candidate
+        reasons = errors + minor + [f"Puzzle '{name}': {reason}." for name, reason in unplayable.items()]
+        print(f"[WARNING] Puzzle stage rejected on attempt {attempt}: {reasons}")
+        previous_errors = reasons
 
-    if acceptable is not None:
-        return acceptable
+    if fallback is not None:
+        return fallback[0]
     raise ValueError(f"Failed to generate valid puzzles after {max_attempts} attempts: {previous_errors}")

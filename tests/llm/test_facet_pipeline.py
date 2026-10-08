@@ -40,8 +40,8 @@ CHARACTERS = {"characters": [_character("Mago", "Torre", ["Mapa"]), _character("
 OBJECTIVE = {"objective": {"type": "get_item", "description": "Get the crown", "success_conditions": ["has it"],
                            "components": [{"name": "Corona", "component_type": "item", "role_in_objective": "goal"}]},
              "world_theme": "t", "narrative_context": "n"}
-PUZZLES = {"puzzles": [{"name": "Acertijo", "puzzle_type": "riddle", "descriptions": ["d"], "problem": "p",
-                        "answer": "a", "proposed_by_character": "Mago",
+PUZZLES = {"puzzles": [{"name": "Acertijo", "puzzle_type": "riddle", "descriptions": ["d"], "problem": "¿Qué tiene agujas pero no cose?",
+                        "answer": "reloj", "proposed_by_character": "Mago",
                         "rewards": [{"reward_type": "item", "description": "d", "item_name": "Mapa"}],
                         "relevance_to_objective": "r", "hint": "h"}],
            "blocked_passage_additions": [{"from_location": "Sótano", "passage": {
@@ -272,7 +272,7 @@ def test_a_puzzle_nobody_proposes_is_flagged(fake_model):
 
     facet_pipeline.run_puzzle_stage(world, "es", fake_model, (1, 1))
 
-    assert "never encounter it" in fake_model.prompts["PuzzleStageResult"][1]
+    assert "nobody presents it" in fake_model.prompts["PuzzleStageResult"][1]
 
 
 def test_a_failed_assembly_gets_one_new_skeleton(monkeypatch, fake_model):
@@ -310,3 +310,52 @@ def test_gathering_several_different_items_is_a_valid_objective():
     facet = _objective_facet("get_item", [("Fragmento Norte", "item"), ("Fragmento Sur", "item"), ("Fragmento Este", "item")])
 
     assert facet_pipeline._verify_objective(facet, roster) == []
+
+
+def _stage_with(**puzzle_fields):
+    puzzle = dict(PUZZLES["puzzles"][0], **puzzle_fields)
+    return {**PUZZLES, "puzzles": [puzzle], "blocked_passage_additions": []}
+
+
+def test_a_statement_that_is_only_an_instruction_is_unplayable(fake_model):
+    world = facet_pipeline.generate_world_facets(CONCEPT, SKELETON, "es", "fake", parallel=False)
+    fake_model.first_responses["PuzzleStageResult"] = _stage_with(
+        problem="Resuelve el acertijo del Mago para ganar su confianza")
+
+    result = facet_pipeline.run_puzzle_stage(world, "es", fake_model, (1, 1))
+
+    assert "does not state the actual question" in fake_model.prompts["PuzzleStageResult"][1]
+    assert result.puzzles[0].problem == "¿Qué tiene agujas pero no cose?"
+
+
+def test_a_puzzle_still_unplayable_after_the_retry_is_dropped(monkeypatch):
+    bad = _stage_with(problem="Solve the riddle")
+
+    class AlwaysBad(FakeModel):
+        def prompt_model_structured(self, prompt, schema, **kwargs):
+            if schema.__name__ == "PuzzleStageResult":
+                self.prompts.setdefault("PuzzleStageResult", []).append(prompt)
+                return bad
+            return super().prompt_model_structured(prompt, schema, **kwargs)
+
+    model = AlwaysBad()
+    monkeypatch.setattr(facet_pipeline, "get_llm", lambda name: model)
+    world = facet_pipeline.generate_world_facets(CONCEPT, SKELETON, "es", "fake", parallel=False)
+
+    result = facet_pipeline.run_puzzle_stage(world, "es", model, (1, 1))
+
+    assert len(model.prompts["PuzzleStageResult"]) == 2
+    assert result.puzzles == []
+    assert all(c.interaction is None or c.interaction.proposes_puzzle is None for c in result.characters)
+
+
+def test_a_statement_with_its_own_answer_is_unplayable():
+    from src.ivie.llm.structured_data_models import GeneratedPuzzle
+    puzzle = GeneratedPuzzle(name="R", puzzle_type="riddle", descriptions=["d"], problem="¿Qué abre esta puerta? La llave dorada",
+                             answer="la llave dorada", proposed_by_character="Mago", rewards=[], relevance_to_objective="r", hint="h")
+
+    class World:
+        locations = []
+        puzzles = [puzzle]
+
+    assert "contains its own answer" in facet_pipeline.unplayable_puzzles(World())["R"]
