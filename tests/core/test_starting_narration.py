@@ -37,3 +37,31 @@ def test_starting_narration_contains_scene_and_objective(monkeypatch, parallel):
         assert elapsed < 0.5
     else:
         assert elapsed >= 0.6
+
+
+def test_an_introduction_before_the_objective_is_dropped(monkeypatch):
+    class Chatty(SlowNarrator):
+        def prompt_model(self, system_msg, user_msg):
+            if "forma alternativa de narrar el objetivo" in system_msg:
+                return "Aquí tienes una forma alternativa de narrar el objetivo:\n\nTienes que encontrar la tortuga."
+            return "Una habitación con pisos de madera."
+
+    monkeypatch.setattr(game_logic, "get_generation_flags",
+                        lambda config=None: {"facets": False, "puzzle_stage_only": False, "parallel": False})
+    world = example_worlds.get_world("tutorial", language="es")
+
+    narration = game_logic.generate_starting_narration(world, "es", Chatty(delay=0))
+
+    assert "🎯 Tienes que encontrar la tortuga." in narration
+    assert "Aquí tienes" not in narration
+
+
+def test_deliver_to_a_character_has_an_objective_sentence():
+    from src.ivie.core.world import Character, Item, Location
+    from src.ivie.llm.prompts import prompt_describe_objective
+    hall = Location("Hall", ["d"])
+    scroll, librarian = Item("Pergamino", ["d"]), Character("Bibliotecario", ["d"], location=hall)
+
+    _, user_msg = prompt_describe_objective((scroll, librarian), language="es")
+
+    assert "Pergamino" in user_msg and "Bibliotecario" in user_msg

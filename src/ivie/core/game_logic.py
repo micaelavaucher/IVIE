@@ -65,6 +65,10 @@ def generate_starting_narration(world, language, narrative_model):
                     else:
                         starting_narration += f"\n\n🎯 {narrated_objective}"
                 else:
+                    # Without the #...# format the model may add an introduction ("Here is another way
+                    # to narrate the objective:"); the sentence itself is the last line
+                    lines = [line.strip(" *-•\t") for line in str(narrated_objective).splitlines() if line.strip(" *-•\t")]
+                    narrated_objective = lines[-1] if lines else str(narrated_objective)
                     if not narrated_objective.strip().endswith(('.', '!', '?')):
                         narrated_objective += '.'
                     starting_narration += f"\n\n🎯 {narrated_objective}"

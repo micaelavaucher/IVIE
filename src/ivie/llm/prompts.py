@@ -20,7 +20,9 @@ def prompt_describe_objective_english (objective):
 
     system_msg = """You have to provide an alternative way to narrate the objective given to you. You should always use simple language. 
     
-    Provide your narration in a clear, direct format. For example: You have to get the key or You have to reach the castle"""
+    Provide your narration in a clear, direct format. For example: You have to get the key or You have to reach the castle
+
+    Answer ONLY with that one sentence, between hash signs, for example: #You have to get the key.# No introduction, no options, no lists."""
 
     # Handle new GeneratedObjective structure - check if it's a tuple with new structure
     if len(objective) == 2 and hasattr(objective[1], 'description') and hasattr(objective[1], 'type'):
@@ -37,6 +39,8 @@ def prompt_describe_objective_english (objective):
             user_msg = f'The objective to narrate in an alterative way is "{objective[0].name} has to get the item {objective[1].name}."'
         elif first_component_class == "Item" and second_component_class == "Location":
             user_msg = f'The objective to narrate in an alterative way is "You have to leave item {objective[0].name} in place {objective[1].name}."'
+        elif first_component_class == "Item" and second_component_class == "Character":
+            user_msg = f'The objective to narrate in an alterative way is "You have to give the item {objective[0].name} to {objective[1].name}."'
         elif first_component_class == "Character" and second_component_class == "Character":
             user_msg = f'The objective to narrate in an alterative way is "{objective[0].name} has to find {objective[1].name}."'
         elif first_component_class == "Character" and second_component_class == "MysteryObjective":
@@ -48,7 +52,9 @@ def prompt_describe_objective_spanish (objective):
 
     system_msg = """Tienes que dar una forma alternativa de narrar el objetivo que se te dará. Siempre usa lenguaje simple. 
     
-    Proporciona tu narración en un formato claro y directo. Por ejemplo: Tienes que conseguir la llave o Tienes que llegar al castillo"""
+    Proporciona tu narración en un formato claro y directo. Por ejemplo: Tienes que conseguir la llave o Tienes que llegar al castillo
+
+    Responde ÚNICAMENTE con esa oración, entre numerales, por ejemplo: #Tienes que conseguir la llave.# Sin introducciones, sin opciones, sin listas."""
 
     # Handle new GeneratedObjective structure - check if it's a tuple with new structure
     if len(objective) == 2 and hasattr(objective[1], 'description') and hasattr(objective[1], 'type'):
@@ -65,6 +71,8 @@ def prompt_describe_objective_spanish (objective):
             user_msg = f'El objetivo a decir de forma alternativa es "{objective[0].name} tiene que conseguir el objeto {objective[1].name}."'
         elif first_component_class == "Item" and second_component_class == "Location":
             user_msg = f'El objetivo a decir de forma alternativa es "Tienes que dejar el objeto {objective[0].name} en el lugar {objective[1].name}."'
+        elif first_component_class == "Item" and second_component_class == "Character":
+            user_msg = f'El objetivo a decir de forma alternativa es "Tienes que entregarle el objeto {objective[0].name} a {objective[1].name}."'
         elif first_component_class == "Character" and second_component_class == "Character":
             user_msg = f'El objetivo a decir de forma alternativa es "{objective[0].name} tiene que encontrar a {objective[1].name}."'
         elif first_component_class == "Character" and second_component_class == "MysteryObjective":
