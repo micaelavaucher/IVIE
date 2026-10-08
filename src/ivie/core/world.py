@@ -463,13 +463,15 @@ class World:
     for character in characters:
       self.add_character(character)
 
-  def render_world(self, *, language:str = 'en', detail_components:bool = True) -> str:
+  def render_world(self, *, language:str = 'en', detail_components:bool = True, reveal_answers:bool = True) -> str:
+    """The world as text for the language models. reveal_answers=False leaves puzzle answers out,
+    for prompts that do not judge answers (the engine checks them)."""
     rendered_world = ''
 
     if language == 'es':
-      rendered_world = self.__render_world_spanish(detail_components = detail_components)
+      rendered_world = self.__render_world_spanish(detail_components = detail_components, reveal_answers = reveal_answers)
     else:
-      rendered_world = self.__render_world_english(detail_components = detail_components)
+      rendered_world = self.__render_world_english(detail_components = detail_components, reveal_answers = reveal_answers)
 
     return rendered_world
 
@@ -557,7 +559,7 @@ class World:
 
     return formatted_state
   
-  def __render_world_spanish(self, *,  detail_components:bool = True) -> str:
+  def __render_world_spanish(self, *,  detail_components:bool = True, reveal_answers:bool = True) -> str:
     player_location = self.player.location
     reachable_locations = [f"{p.name}" for p in player_location.connecting_locations]
     blocked_passages = [f"{p} bloqueado por {player_location.blocked_locations[p][1].name}" for p in player_location.blocked_locations.keys()]
@@ -628,11 +630,14 @@ class World:
       if len(puzzles_in_the_scene)>0:
         details+="Puzzles:\n"
         for puzzle in puzzles_in_the_scene:
-          details+= f'- {puzzle.name}: {(". ").join(puzzle.descriptions)}. El acertijo a resolver es: "{puzzle.problem}". La respuesta esperada, que NO PUEDES decirle al jugador (JAMÁS) es: "{puzzle.answer}".\n'
+          details+= f'- {puzzle.name}: {(". ").join(puzzle.descriptions)}. El acertijo a resolver es: "{puzzle.problem}".'
+          if reveal_answers:
+            details+= f' La respuesta esperada, que NO PUEDES decirle al jugador (JAMÁS) es: "{puzzle.answer}".'
+          details+= '\n'
 
     return world_description + '\n' + details
 
-  def __render_world_english(self, *,  detail_components:bool = True) -> str:
+  def __render_world_english(self, *,  detail_components:bool = True, reveal_answers:bool = True) -> str:
     player_location = self.player.location
     reachable_locations = [f"{p.name}" for p in player_location.connecting_locations]
     blocked_passages = [f"{p} blocked by {player_location.blocked_locations[p][1].name}" for p in player_location.blocked_locations.keys()]
@@ -691,7 +696,10 @@ class World:
       if len(puzzles_in_the_scene)>0:
         details+="Puzzles:\n"
         for puzzle in puzzles_in_the_scene:
-          details+= f'- <{puzzle.name}>: {(". ").join(puzzle.descriptions)}. The riddle to solve is: "{puzzle.problem}". The expected answer, that you CANNOT tell the player (EVER) is: "{puzzle.answer}".\n'
+          details+= f'- <{puzzle.name}>: {(". ").join(puzzle.descriptions)}. The riddle to solve is: "{puzzle.problem}".'
+          if reveal_answers:
+            details+= f' The expected answer, that you CANNOT tell the player (EVER) is: "{puzzle.answer}".'
+          details+= '\n'
 
     return world_description + '\n' + details
 

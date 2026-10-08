@@ -232,6 +232,20 @@ class WorldUpdate(BaseModel):
     puzzles_solved: List[PuzzleSolved] = Field(default=[], description="List of puzzles that were solved this turn")
     narration: str = Field(description="Narrative text describing what happened")
 
+class TurnIntent(BaseModel):
+    """What the player attempts in a turn, as understood by the reasoning model.
+
+    It carries no narration and decides nothing: the engine (core/turn_engine.py) checks every
+    attempt against the world's rules and the narration is written from what actually happened.
+    """
+    moved_objects: List[MovedObject] = Field(default=[], description="Items the player tries to take, receive, give or drop. new_location: the player's exact name to take an item or receive it from a character, a character's exact name to give it, or the current location's name to drop it")
+    location_changed: LocationChange = Field(default=LocationChange(), description="The location the player tries to go to, if any")
+    passages_to_open: List[str] = Field(default=[], description="Exact names of the destinations of blocked passages the player tries to open, for example with a key")
+    examined_items: List[str] = Field(default=[], description="Exact names of items the player examines, reads, studies, uses or handles without taking them")
+    characters_addressed: List[str] = Field(default=[], description="Exact names of the characters the player talks to, asks something or interacts with")
+    puzzle_attempts: List[str] = Field(default=[], description="Exact names of the puzzles the player tries to answer in this action. Do not judge whether the answer is right")
+    action_summary: str = Field(description="One or two sentences: what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed")
+
 #---- Pipeline Models (for incremental world generation) --------------------
 class WorldConcept(BaseModel):
     """Concept and high-level description of the world."""

@@ -9,7 +9,10 @@ import jsonpickle
 import time
 import streamlit as st
 
+from ..config import load_config
 from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured
+from ..llm.turn_prompts import prompt_interpret_action, prompt_narrate_outcome
+from .turn_engine import apply_turn
 from .world_builder import generate_world_overview, generate_objective_validation_report
 from .world_utils import create_world_state_summary
 from ..llm.structured_data_models import WorldUpdate
@@ -458,9 +461,86 @@ def save_game_log(game_log_dictionary, number_of_turns, answer):
     if db_handler and world_id and current_turn_data:
         db_handler.add_turn_to_trace(world_id, number_of_turns, current_turn_data)
 
+def narrate_from_outcome_enabled(config=None) -> bool:
+    """[Game] NarrateFromOutcome: the engine decides each turn and the narration is written from what happened."""
+    config = config or load_config()
+    return config.getboolean('Game', 'NarrateFromOutcome', fallback=False)
+
+def play_turn_from_outcome(world, message, language, reasoning_model, narrative_model, number_of_turns, game_log_dictionary, memory_system=None):
+    """One turn in three steps: the reasoning model interprets the action (TurnIntent), the engine
+    applies what the rules allow (turn_engine.apply_turn), and the narrative model narrates the
+    engine's facts. Returns the narration."""
+    log = game_log_dictionary[number_of_turns]
+    log["date"] = time.ctime(time.time())
+    log["previous_symbolic_world_state"] = jsonpickle.encode(world, unpicklable=False)
+    log["user_input"] = message
+
+    relevant_memories_text = ""
+    if memory_system:
+        try:
+            step_started = time.perf_counter()
+            relevant_memories = memory_system.retrieve_relevant_memories(message, top_k=3)
+            relevant_memories_text = memory_system.format_memories_for_prompt(relevant_memories, language)
+            print(f"[TIMING] turno: recuperar memorias {time.perf_counter() - step_started:.1f}s")
+        except Exception as e:
+            print(f"⚠️ Error retrieving memories: {e}")
+
+    # 1. Interpret: what does the player attempt?
+    system_msg, user_msg, intent_model = prompt_interpret_action(
+        world.render_world(language=language, reveal_answers=False), message, language, relevant_memories_text)
+    step_started = time.perf_counter()
+    try:
+        response = reasoning_model.prompt_model_structured(prompt=system_msg + "\n\n" + user_msg, response_schema=intent_model)
+        intent = intent_model.model_validate(response) if isinstance(response, dict) and response else intent_model(action_summary=message)
+    except Exception as e:
+        print(f"⚠️ Could not interpret the action, treating it as having no effect: {e}")
+        intent = intent_model(action_summary=message)
+    print(f"[TIMING] turno: razonador {time.perf_counter() - step_started:.1f}s")
+
+    # 2. Apply: the engine decides what actually happens
+    outcome = apply_turn(world, intent, message)
+    objective_completed = bool(world.objective) and world.check_objective()
+    print(f"🛠️ Engine facts for '{message}':\n{outcome.render(language)}")
+
+    # 3. Narrate the facts
+    location = world.player.location
+    system_msg, user_msg = prompt_narrate_outcome(
+        world.render_world(language=language, reveal_answers=False), message, intent.action_summary,
+        outcome.render(language), world.player.visited_locations.get(location.name, []),
+        arrived=outcome.arrived_at is not None, first_visit=outcome.first_visit,
+        objective=world.objective_statement(language) if world.objective else "",
+        objective_completed=objective_completed, language=language)
+    step_started = time.perf_counter()
+    narration = narrative_model.prompt_model(system_msg=system_msg, user_msg=user_msg)
+    print(f"[TIMING] turno: narrador {time.perf_counter() - step_started:.1f}s")
+    world.player.visited_locations.setdefault(location.name, []).append(narration)
+    if outcome.arrived_at is not None:
+        location.visited = True
+
+    log["structured_intent"] = intent.model_dump()
+    log["engine_facts"] = [event.text(language) for event in outcome.events]
+    log["predicted_outcomes"] = narration
+    log["updated_symbolic_world_state"] = jsonpickle.encode(world, unpicklable=True)
+    log["updated_rendered_world_state"] = world.render_world(language=language)
+
+    if memory_system:
+        try:
+            step_started = time.perf_counter()
+            world_state_summary = create_world_state_summary(world, message, language)
+            memory_system.ingest_memory(turn_number=number_of_turns, player_action=message, result_narration=narration, world_state_summary=world_state_summary)
+            print(f"[TIMING] turno: guardar memoria {time.perf_counter() - step_started:.1f}s")
+        except Exception as e:
+            print(f"⚠️ Error ingesting memory: {e}")
+
+    return narration
+
 def create_game_loop(world, reasoning_model, narrative_model, language, visited_locations, api_key=None, enable_rag=True, inspiration="",
-                     world_id=None, start_turn=0):
-    """world_id and start_turn let a session resumed in a new process keep its RAG memories and turn count."""
+                     world_id=None, start_turn=0, narrate_from_outcome=None):
+    """world_id and start_turn let a session resumed in a new process keep its RAG memories and turn count.
+    narrate_from_outcome selects the turn pipeline; None reads it from config.ini."""
+    if narrate_from_outcome is None:
+        narrate_from_outcome = narrate_from_outcome_enabled()
+    print(f"⚙️ Turn pipeline: {'engine decides, narration from outcome' if narrate_from_outcome else 'single model call'}")
     last_player_position = world.player.location
     number_of_turns = start_turn
     
@@ -527,9 +607,11 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
         if debug_response:
             return debug_response
 
-        puzzle_response = check_character_puzzle_mention(world, message, language)
-        if puzzle_response:
-            return puzzle_response
+        if not narrate_from_outcome:
+            # The single-call pipeline proposes character puzzles here; the new one does it in the engine
+            puzzle_response = check_character_puzzle_mention(world, message, language)
+            if puzzle_response:
+                return puzzle_response
 
         number_of_turns += 1
         turn_started = time.perf_counter()
@@ -537,14 +619,21 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
 
         visited_locations.add(world.player.location.name)
 
-        response_update = process_player_input_structured(
-            world, message, language, reasoning_model,
-            number_of_turns, game_log_dictionary, memory_system,
-        )
+        if narrate_from_outcome:
+            answer = play_turn_from_outcome(
+                world, message, language, reasoning_model, narrative_model,
+                number_of_turns, game_log_dictionary, memory_system,
+            )
+            last_player_position = world.player.location
+        else:
+            response_update = process_player_input_structured(
+                world, message, language, reasoning_model,
+                number_of_turns, game_log_dictionary, memory_system,
+            )
 
-        step_started = time.perf_counter()
-        answer, last_player_position = generate_narration(world, last_player_position, response_update, language, narrative_model)
-        print(f"[TIMING] turno: narración de escena {time.perf_counter() - step_started:.1f}s")
+            step_started = time.perf_counter()
+            answer, last_player_position = generate_narration(world, last_player_position, response_update, language, narrative_model)
+            print(f"[TIMING] turno: narración de escena {time.perf_counter() - step_started:.1f}s")
         answer = check_objective_completion(world, answer, language)
 
         world_state_formatted = world.format_world_state_for_chat(language=language)
