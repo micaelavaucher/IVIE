@@ -480,12 +480,14 @@ def save_game_log(game_log_dictionary, number_of_turns, answer):
     if db_handler and world_id and current_turn_data:
         db_handler.add_turn_to_trace(world_id, number_of_turns, current_turn_data)
 
-def create_game_loop(world, reasoning_model, narrative_model, language, visited_locations, api_key=None, enable_rag=True, inspiration=""):
+def create_game_loop(world, reasoning_model, narrative_model, language, visited_locations, api_key=None, enable_rag=True, inspiration="",
+                     world_id=None, start_turn=0):
+    """world_id and start_turn let a session resumed in a new process keep its RAG memories and turn count."""
     last_player_position = world.player.location
-    number_of_turns = 0
+    number_of_turns = start_turn
     
     world.update_hints()
-    session_world_id = f"generated_{int(time.time())}"
+    session_world_id = world_id or f"generated_{int(time.time())}"
     
     game_log_dictionary = create_game_log_entry(
         language,
