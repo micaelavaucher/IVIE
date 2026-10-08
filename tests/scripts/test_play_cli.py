@@ -33,12 +33,17 @@ class FakeNarrator:
 
 
 def _update(narration, new_location=None, moved=None):
-    return {"narration": narration, "moved_objects": moved or [], "blocked_passages_available": [],
-            "location_changed": {"new_location": new_location}, "puzzles_solved": []}
+    """A TurnIntent as the reasoning model returns it."""
+    return {"action_summary": narration, "moved_objects": moved or [], "passages_to_open": [],
+            "location_changed": {"new_location": new_location}, "examined_items": [],
+            "characters_addressed": [], "puzzle_attempts": []}
 
 
 @pytest.fixture
 def session(tmp_path, monkeypatch):
+    from src.ivie.core import game_logic
+    # The CLI plays the turn the app uses; pin it instead of reading config.ini
+    monkeypatch.setattr(game_logic, "narrate_from_outcome_enabled", lambda config=None: True)
     monkeypatch.setattr(play_cli, "PLAYTESTS", str(tmp_path))
     name = "test-session"
     session_dir = tmp_path / name
@@ -78,20 +83,17 @@ def test_turns_are_played_through_the_game_loop_and_saved(session, capsys):
     assert "OBJETIVO COMPLETADO" in output
     transcript = (session_dir / "transcript.md").read_text(encoding="utf-8")
     assert "> voy al jardín" in transcript and "> agarro la tortuga" in transcript
-    assert "Predicted outcomes" in (session_dir / "engine.log").read_text(encoding="utf-8")
+    assert "Engine facts" in (session_dir / "engine.log").read_text(encoding="utf-8")
 
 
 def test_an_engine_exception_is_reported_not_raised(session, capsys):
     name, session_dir = session
 
-    class Broken(FakeReasoning):
-        def prompt_model_structured(self, prompt, response_schema, **kwargs):
-            raise RuntimeError("boom")
-
+    class BrokenNarrator(FakeNarrator):
         def prompt_model(self, system_msg, user_msg):
             raise RuntimeError("boom again")
 
-    play_cli.play_turn(name, "miro", Broken([]), FakeNarrator(), enable_rag=False)
+    play_cli.play_turn(name, "miro", FakeReasoning([_update("mira")]), BrokenNarrator(), enable_rag=False)
 
     assert "ERROR DEL MOTOR" in capsys.readouterr().out
     assert "boom again" in (session_dir / "transcript.md").read_text(encoding="utf-8")
