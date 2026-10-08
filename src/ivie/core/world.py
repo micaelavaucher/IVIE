@@ -898,6 +898,36 @@ class World:
         if isinstance(hint, dict):
             hint["given"] = False
 
+  def _is_player_destination(self, name: str) -> bool:
+    """Whether a moved object's destination means "the player" ("Player Inventory", "inventario del jugador", the player's name...)."""
+    from ..llm.name_matching import normalize_name
+    destination = normalize_name(name or "")
+    player_name = normalize_name(self.player.name)
+    if not destination:
+      return False
+    if destination == player_name or (player_name and player_name in destination):
+      return True
+    words = set(destination.split())
+    if words <= set(player_name.split()):  # part of the player's name, e.g. "Watson" for "Dr. John Watson"
+      return True
+    return bool(words & {"inventory", "inventario", "player", "jugador", "jugadora", "you", "yourself"})
+
+  def _find_character_flexible(self, name: str):
+    """A non-player character by name, ignoring case, accents and leading articles."""
+    from ..llm.name_matching import normalize_name
+    if name in self.characters and self.characters[name] is not self.player:
+      return self.characters[name]
+    wanted = normalize_name(name or "")
+    return next((c for c in self.characters.values()
+                 if c is not self.player and wanted and normalize_name(c.name) == wanted), None)
+
+  def _find_location_flexible(self, name: str):
+    from ..llm.name_matching import normalize_name
+    if name in self.locations:
+      return self.locations[name]
+    wanted = normalize_name(name or "")
+    return next((l for l in self.locations.values() if wanted and normalize_name(l.name) == wanted), None)
+
   def update_from_structured(self, world_update, language: str = 'en') -> None:
     
     # Handle moved objects
@@ -910,11 +940,11 @@ class World:
           print(f"❌ Object '{moved_obj.object_name}' not found in world")
           continue
         
-        # Check if item should go to player inventory (case-insensitive)
-        new_location_lower = moved_obj.new_location.lower()
-        player_name_lower = self.player.name.lower()
-        
-        if new_location_lower in ['inventory', 'inventario', 'player', 'jugador', player_name_lower]:
+        destination_character = self._find_character_flexible(moved_obj.new_location)
+        destination_location = self._find_location_flexible(moved_obj.new_location)
+
+        # An exact character name wins over a partial match of the player's name
+        if destination_character is None and self._is_player_destination(moved_obj.new_location):
           # Player takes item
           item_source = next((char for char in self.characters.values() if world_item in char.inventory), None)
           if not item_source:
@@ -969,24 +999,21 @@ class World:
                           break
                   if obstacle_found:
                       break
-              if obstacle_found:
-                  break
             
-        elif moved_obj.new_location in self.characters:
+        elif world_item not in self.player.inventory:
+          # Giving and dropping need the player to hold the item; otherwise it would end up in two places
+          print(f"⚠️ Ignored moving '{world_item.name}' to '{moved_obj.new_location}': the player does not hold it")
+
+        elif destination_character is not None:
           # Player gives item to character
-          self.player.give_item(self.characters[moved_obj.new_location], world_item)
+          self.player.give_item(destination_character, world_item)
           
         else:
           # Player drops item (location name or current location)
-          # Remove from player inventory
           self.player.inventory = [i for i in self.player.inventory if i is not world_item]
-          
-          if moved_obj.new_location in self.locations:
-            # Place in specific location
-            self.locations[moved_obj.new_location].items.append(world_item)
-          else:
-            # Place in current location
-            self.player.location.items.append(world_item)
+          target = destination_location or self.player.location
+          if world_item not in target.items:
+            target.items.append(world_item)
           
       except Exception as e:
         print(f"Error moving object {moved_obj.object_name}: {e}")
