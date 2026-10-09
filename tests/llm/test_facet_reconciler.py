@@ -549,3 +549,18 @@ def test_is_objective_target_follows_the_objective():
     )
 
     assert {item.name: item.is_objective_target for item in world.items} == {"Crown": True, "Coin": False}
+
+
+def test_a_mystery_objective_is_its_culprit():
+    objective = _mystery([_clue("Ink stain", "Letter")])
+    objective.mystery_culprit = "Butler"
+    world, report = _reconcile(
+        locations=[_location("Hall", items=["Letter"])],
+        items=[_item("Letter")],
+        characters=[_character("Butler", "Hall")],
+        player=_character("Player", "Hall"),
+        objective=objective,
+    )
+
+    assert [(c.name, c.component_type) for c in world.objective.components] == [("Butler", ComponentType.CHARACTER)]
+    assert any("replaced by its culprit" in m for m in report.repairs)

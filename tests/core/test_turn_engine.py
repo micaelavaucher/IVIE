@@ -108,9 +108,9 @@ def test_giving_or_dropping_what_the_player_does_not_have_is_refused():
 
 def test_a_blocked_passage_opens_only_with_its_item():
     world = _world()
-    closed = apply_turn(world, _intent(passages_to_open=["Despacho"]), "abro el despacho")
+    closed = apply_turn(world, _intent(passages_to_open=[{"destination": "Despacho"}]), "abro el despacho")
     apply_turn(world, _intent(moves=[("Llave del Despacho", "Jugador")]), "le pido la llave")
-    opened = apply_turn(world, _intent(passages_to_open=["Despacho"], go="Despacho"), "abro y entro")
+    opened = apply_turn(world, _intent(passages_to_open=[{"destination": "Despacho"}], go="Despacho"), "abro y entro")
 
     assert closed.kinds() == ["passage_closed"]
     assert opened.kinds() == ["passage_opened", "moved"] and world.player.location.name == "Despacho"
@@ -154,7 +154,7 @@ def test_a_wrong_answer_is_reported():
     _sabio_puzzle(world)
     apply_turn(world, _intent(go="Torre", characters_addressed=["Sabio"]), "voy y le hablo")
 
-    outcome = apply_turn(world, _intent(puzzle_attempts=["Enigma"]), "es el viento")
+    outcome = apply_turn(world, _intent(puzzle_attempts=[{"puzzle_name": "Enigma", "answer": "el viento"}]), "es el viento")
 
     assert outcome.kinds() == ["puzzle_failed"] and world.puzzle_states["Enigma"] == "proposed"
 

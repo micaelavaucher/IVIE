@@ -181,6 +181,10 @@ def reveal_report(world, generated):
     lines.append(f"  componentes: {[(c['name'], c['component_type']) for c in objective['components']]}")
     for clue in objective.get("mystery_clues") or []:
         lines.append(f"  pista '{clue['name']}': objeto '{clue['associated_item']}' en '{clue['item_location']}'")
+    if objective.get("mystery_question"):
+        lines.append(f"  pregunta del misterio: {objective['mystery_question']}")
+    if objective.get("mystery_culprit"):
+        lines.append(f"  culpable: {objective['mystery_culprit']}")
     if objective.get("mystery_solution"):
         lines.append(f"  solución del misterio: {objective['mystery_solution']}")
     return "\n".join(lines)

@@ -105,7 +105,7 @@ class GeneratedPuzzle(BaseModel):
     descriptions: List[str] = Field(description="List of descriptive texts explaining the puzzle")
     problem: str = Field(description="Exactly what the player is told: the actual riddle, question or challenge to answer, not an instruction such as 'solve the riddle'. Must not contain the answer")
     answer: str = Field(description="The solution to the puzzle: a single word or a very short phrase")
-    accepted_answers: List[str] = Field(default=[], description="Other ways a player may phrase the same answer: the key word alone, without articles, obvious synonyms. Short, each one a correct answer")
+    accepted_answers: List[str] = Field(default=[], description="Other ways a player may phrase the same answer: the key word alone, without articles, obvious synonyms. Short, each one a correct answer. When the answer is a sequence, a list or a number, every part is needed: never accept a part of it")
     location: Optional[str] = Field(default=None, description="Location where puzzle is found, or None if given by character. Note: if specified, this location must exist in the world")
     proposed_by_character: Optional[str] = Field(default=None, description="Character who proposes this puzzle, or None if environmental, NONE IF REWARD IS A PASSAGE. Note: if specified, this character must exist in the world")
     proposed_by_location: Optional[str] = Field(default=None, description="Location that when investigated/examined should propose this puzzle, or None if it's given by a character.")
@@ -173,7 +173,7 @@ class ObjectiveComponent(BaseModel):
 #---- Mystery Models ---------------------------------------------------------
 class MysteryClue(BaseModel):
     name: str = Field(description="Name of the mystery clue")
-    description: str = Field(description="Description of what the clue reveals")
+    description: str = Field(description="What the player finds by examining associated_item, told as something in or on that item and naming it. Mention only elements from the lists")
     associated_item: str = Field(description="Item that this clue is associated with. Note: this item must exist in the world")
     item_location: Optional[str] = Field(default=None, description="Location where the associated item can be found. Note: this location must exist in the world")
     relevance_to_mystery: str = Field(description="How this clue helps solve the mystery")
@@ -185,7 +185,9 @@ class GeneratedObjective(BaseModel):
     description: str = Field(description="Clear description of what the player needs to accomplish")
     success_conditions: List[str] = Field(description="Specific conditions that must be met to complete the objective. Note: ensure these conditions are actually achievable given the world setup")
     mystery_clues: Optional[List[MysteryClue]] = Field(default=None, description="List of clues for mystery objectives. Only used when type is SOLVE_MYSTERY")
-    mystery_solution: Optional[str] = Field(default=None, description="The solution to the mystery. Only used when type is SOLVE_MYSTERY")
+    mystery_question: Optional[str] = Field(default=None, description="The question the player must answer: who is responsible for the crime, theft or betrayal (e.g. 'Who stole the Midnight Eye?'). Only used when type is SOLVE_MYSTERY")
+    mystery_culprit: Optional[str] = Field(default=None, description="Exact name of the non-player character from the list who is responsible: the answer to mystery_question. The player wins by accusing them once every clue is found. Only used when type is SOLVE_MYSTERY")
+    mystery_solution: Optional[str] = Field(default=None, description="How it happened: names mystery_culprit and agrees with the clues. Only used when type is SOLVE_MYSTERY")
     completion_narration: Optional[str] = Field(default=None, description="Narrative description of what happens after the player successfully completes the objective. This should provide a satisfying conclusion to the adventure. Not used for SOLVE_MYSTERY objectives (which use mystery_solution instead)")
     objective_hints: List[Hint] = Field(default=[], description="Progressive hints for advancing toward the objective (from general to specific). Only used for non-mystery objectives")
     hints: List[Hint] = Field(default=[], description="List of hints that can be given to the player")
@@ -232,6 +234,14 @@ class WorldUpdate(BaseModel):
     puzzles_solved: List[PuzzleSolved] = Field(default=[], description="List of puzzles that were solved this turn")
     narration: str = Field(description="Narrative text describing what happened")
 
+class PassageAttempt(BaseModel):
+    destination: str = Field(description="Exact name of the destination of the blocked passage")
+    using_item: str = Field(default="", description="The item the player says they open it with, as the player names it; empty if they do not say")
+
+class PuzzleAttempt(BaseModel):
+    puzzle_name: str = Field(description="Exact name of the puzzle")
+    answer: str = Field(default="", description="The answer the player gives, copied word for word from what they wrote; empty if they give none (e.g. 'I solved it')")
+
 class TurnIntent(BaseModel):
     """What the player attempts in a turn, as understood by the reasoning model.
 
@@ -240,10 +250,12 @@ class TurnIntent(BaseModel):
     """
     moved_objects: List[MovedObject] = Field(default=[], description="Items the player tries to take, receive, give or drop. new_location: the player's exact name to take an item or receive it from a character, a character's exact name to give it, or the current location's name to drop it")
     location_changed: LocationChange = Field(default=LocationChange(), description="The location the player tries to go to, if any")
-    passages_to_open: List[str] = Field(default=[], description="Exact names of the destinations of blocked passages the player tries to open, for example with a key")
-    examined_items: List[str] = Field(default=[], description="Exact names of items the player examines, reads, studies, uses or handles without taking them")
+    passages_to_open: List[PassageAttempt] = Field(default=[], description="Blocked passages the player tries to open, for example with a key")
+    examined_items: List[str] = Field(default=[], description="Exact names of items the player examines, reads, studies or handles without taking them")
+    items_used: List[str] = Field(default=[], description="Items the player uses, wields or says they carry ('I use my lantern', 'I shoot with my revolver'): the exact name if it is in the world state, otherwise as the player names it")
     characters_addressed: List[str] = Field(default=[], description="Exact names of the characters the player talks to, asks something or interacts with")
-    puzzle_attempts: List[str] = Field(default=[], description="Exact names of the puzzles the player tries to answer in this action. Do not judge whether the answer is right")
+    puzzle_attempts: List[PuzzleAttempt] = Field(default=[], description="Puzzles the player tries to answer, or says they solved, in this action. Do not judge whether the answer is right")
+    accusation: str = Field(default="", description="If the player accuses someone or says who is responsible for the mystery: that character's exact name, or the name the player used if no character matches. Empty otherwise")
     action_summary: str = Field(description="One or two sentences: what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed")
 
 #---- Pipeline Models (for incremental world generation) --------------------

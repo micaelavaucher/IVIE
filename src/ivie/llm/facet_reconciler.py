@@ -22,8 +22,10 @@ from typing import List, Optional
 
 from .structured_data_models import (
     CharacterInteraction,
+    ComponentType,
     GeneratedWorld,
     ItemReward,
+    ObjectiveComponent,
     PassageReward,
     WorldLocationsFacet,
     WorldItemsFacet,
@@ -483,6 +485,16 @@ def reconcile_world_facets(
 
     # --- Mystery clues must agree with where items actually ended up ---------------------
     align_mystery_clues(objective, locations, characters, item_names, report)
+
+    # --- A mystery's goal is its culprit ------------------------------------------------
+    # The player wins by accusing the culprit, so that is the objective's only component; items
+    # or witnesses the model listed would read as goals the game never checks.
+    if _enum_value(objective.type) == 'solve_mystery' and objective.mystery_culprit:
+        culprit = ObjectiveComponent(name=objective.mystery_culprit, component_type=ComponentType.CHARACTER,
+                                     role_in_objective="culprit: the player accuses them once every clue is found")
+        if [(c.name, _enum_value(c.component_type)) for c in objective.components] != [(culprit.name, 'character')]:
+            report.repair(f"mystery components {[c.name for c in objective.components]} replaced by its culprit '{culprit.name}'")
+        objective.components = [culprit]
 
     # --- The objective must not be complete before the first move ------------------------
     _avoid_trivial_objective(objective, player, characters, locations, report)

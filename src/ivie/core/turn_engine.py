@@ -12,11 +12,15 @@ Rules enforced here:
   the reward of their unsolved puzzle, and their verifiable requirements are met (a required item
   they now hold, a required puzzle solved, the player at a required location).
 - An item can be given or dropped only if the player holds it.
-- A blocked passage opens with the item that blocks it, if the player holds it; a passage blocked
-  by a puzzle opens when the puzzle is solved.
+- A blocked passage opens with the item that blocks it, if the player holds it and does not say
+  they use something else; a passage blocked by a puzzle opens when the puzzle is solved.
+- Every attempt that does not happen is recorded with its reason, including items the player
+  uses or claims to carry that they do not have, and "I solved it" without an answer: the
+  narration is written from these facts, so it must not have to guess.
 - A puzzle is presented when the player addresses its character, examines its item or tries its
   passage, and is solved only if the player's own words contain an accepted answer.
-- A mystery clue is discovered when its item is obtained or examined.
+- A mystery clue is discovered when its item is obtained or examined. Once every clue is known,
+  accusing the culprit solves the mystery; before that, an accusation lacks the evidence.
 """
 
 from dataclasses import dataclass, field
@@ -44,7 +48,11 @@ class TurnOutcome:
     presented_puzzles: List[Puzzle] = field(default_factory=list)
 
     def add(self, kind: str, ok: bool, es: str, en: str) -> None:
-        self.events.append(TurnEvent(kind, ok, es, en))
+        # One attempt can reach the engine twice ("I shoot the lock with my revolver" is a use and
+        # an opening); the fact is told once
+        event = TurnEvent(kind, ok, es, en)
+        if event not in self.events:
+            self.events.append(event)
 
     def kinds(self) -> List[str]:
         return [event.kind for event in self.events]
@@ -233,9 +241,9 @@ class _Turn:
 
     # -- passages and movement ---------------------------------------------------------
 
-    def open_passage(self, destination_name) -> None:
+    def open_passage(self, attempt) -> None:
         world, location = self.world, self.player.location
-        destination = world._find_location_flexible(destination_name)
+        destination = world._find_location_flexible(attempt.destination)
         if destination is None or destination.name not in location.blocked_locations:
             return  # not a blocked passage from here: nothing to open
         _, obstacle, _ = location.blocked_locations[destination.name]
@@ -245,6 +253,16 @@ class _Turn:
                              f"The way to {destination.name} only opens by solving the puzzle '{obstacle.name}'")
             self.present(obstacle)
             return
+        if attempt.using_item:
+            tool = world._find_object_flexible(attempt.using_item)
+            if tool is None or tool not in self.player.inventory:
+                self.unavailable(tool, attempt.using_item)
+                return
+            if tool is not obstacle:
+                self.outcome.add('passage_closed', False,
+                                 f"El paso hacia {destination.name} no se abre con {tool.name}",
+                                 f"The way to {destination.name} does not open with {tool.name}")
+                return
         if obstacle in self.player.inventory:
             location.unblock_passage(destination)
             self.outcome.add('passage_opened', True, f"El jugador abre el paso hacia {destination.name} usando {obstacle.name}",
@@ -293,14 +311,35 @@ class _Turn:
         for puzzle in _puzzles_of(self.world, character):
             self.present(puzzle)
 
+    def unavailable(self, item, name) -> None:
+        """The player uses or mentions an item they do not have and cannot reach."""
+        if item is None:
+            self.outcome.add('item_missing', False,
+                             f"El jugador no tiene '{name}': no está en su inventario ni en este lugar",
+                             f"The player has no '{name}': it is neither in their inventory nor here")
+        else:
+            self.outcome.add('item_missing', False,
+                             f"{item.name} no está al alcance: el jugador no lo tiene y no está en este lugar",
+                             f"{item.name} is out of reach: the player does not have it and it is not here")
+
+    def use(self, item_name) -> None:
+        """Using an item needs it at hand: in the inventory or lying here. Otherwise the player does
+        not have it, even if they say so ("I shoot with my revolver")."""
+        item = self.world._find_object_flexible(item_name)
+        if item is None or (item not in self.player.inventory and item not in self.player.location.items):
+            self.unavailable(item, item_name)
+            return
+        self.examine(item.name)
+
     def examine(self, item_name) -> None:
         world, location = self.world, self.player.location
         item = world._find_object_flexible(item_name)
         if item is None:
-            return
+            return  # scenery the world does not model: nothing to check
         holder = _holder_of(world, item)
         reachable = item in location.items or item in self.player.inventory or (holder is not None and holder.location is location)
         if not reachable:
+            self.unavailable(item, item_name)
             return
         self.discover_clue(item)
         puzzle = world.find_puzzle_proposed_by_location(item.name)
@@ -308,18 +347,50 @@ class _Turn:
             self.present(puzzle)
 
     def answer_puzzles(self) -> None:
+        """A puzzle is solved when the player's own words contain its answer. The interpreter's
+        copy of the answer only tells a wrong answer apart from no answer at all."""
         world = self.world
-        attempted = [p for p in (_find_puzzle(world, name) for name in self.intent.puzzle_attempts) if p is not None]
+        given = {}
+        for attempt in self.intent.puzzle_attempts:
+            puzzle = _find_puzzle(world, attempt.puzzle_name)
+            if puzzle is not None:
+                given[puzzle] = (attempt.answer or "").strip()
         in_scene = [p for p in world.puzzles.values()
                     if world.puzzle_states.get(p.name) == 'proposed' and _puzzle_in_scene(world, p)]
-        for puzzle in list(dict.fromkeys(attempted + in_scene)):
+        for puzzle in list(dict.fromkeys(list(given) + in_scene)):
             if world.puzzle_states.get(puzzle.name) == 'solved':
                 continue
             if puzzle.is_answered_by(self.player_input):
                 self.solve(puzzle)
-            elif puzzle in attempted:
-                self.outcome.add('puzzle_failed', False, f"La respuesta al acertijo '{puzzle.name}' no es correcta",
-                                 f"The answer to the puzzle '{puzzle.name}' is not correct")
+            elif puzzle in given and not given[puzzle]:
+                self.outcome.add('puzzle_unanswered', False,
+                                 f"El jugador dice haber resuelto el acertijo '{puzzle.name}' pero no da ninguna respuesta: sigue sin resolver",
+                                 f"The player says they solved the puzzle '{puzzle.name}' but gives no answer: it remains unsolved")
+            elif puzzle in given:
+                self.outcome.add('puzzle_failed', False,
+                                 f"La respuesta \"{given[puzzle]}\" al acertijo '{puzzle.name}' no es correcta",
+                                 f"The answer \"{given[puzzle]}\" to the puzzle '{puzzle.name}' is not correct")
+
+    def accuse(self, name) -> None:
+        objective = self.world.objective
+        mystery = objective[1] if objective and isinstance(objective[1], MysteryObjective) else None
+        if mystery is None or not getattr(mystery, 'culprit', None) or mystery.is_completed():
+            return
+        character = self.world._find_character_flexible(name)
+        accused = character.name if character is not None else name
+        if not mystery.ready_to_accuse():
+            found, total = mystery.get_completion_progress()
+            self.outcome.add('accusation_premature', False,
+                             f"El jugador acusa a {accused}, pero todavía no reunió las pruebas para sostener una acusación ({found}/{total} pistas)",
+                             f"The player accuses {accused}, but has not yet gathered the evidence to back an accusation ({found}/{total} clues)")
+        elif mystery.accuse(accused):
+            self.outcome.add('mystery_solved', True,
+                             f"El jugador acusa a {accused}, y las pruebas lo confirman: es el responsable. Lo que pasó: {mystery.mystery_solution}",
+                             f"The player accuses {accused}, and the evidence confirms it: they are responsible. What happened: {mystery.mystery_solution}")
+        else:
+            self.outcome.add('accusation_failed', False,
+                             f"El jugador acusa a {accused}, pero las pruebas no lo señalan: la acusación no se sostiene",
+                             f"The player accuses {accused}, but the evidence does not point to them: the accusation does not hold")
 
     def solve(self, puzzle) -> None:
         world, player = self.world, self.player
@@ -343,13 +414,17 @@ def apply_turn(world, intent, player_input: str) -> TurnOutcome:
     turn = _Turn(world, intent, player_input)
     for moved in intent.moved_objects:
         turn.move_item(moved)
-    for destination in intent.passages_to_open:
-        turn.open_passage(destination)
+    for attempt in intent.passages_to_open:
+        turn.open_passage(attempt)
     if intent.location_changed and intent.location_changed.new_location:
         turn.go_to(intent.location_changed.new_location)
     for name in intent.characters_addressed:
         turn.address(name)
     for name in intent.examined_items:
         turn.examine(name)
+    for name in intent.items_used:
+        turn.use(name)
     turn.answer_puzzles()
+    if intent.accusation:
+        turn.accuse(intent.accusation)
     return turn.outcome

@@ -356,6 +356,74 @@ def test_a_statement_with_its_own_answer_is_unplayable():
 
     class World:
         locations = []
+        characters = []
         puzzles = [puzzle]
 
     assert "contains its own answer" in facet_pipeline.unplayable_puzzles(World())["R"]
+
+
+#---- Mysteries: who is responsible ---------------------------------------------------
+
+def _mystery_facet(**overrides):
+    from src.ivie.llm.structured_data_models import WorldObjectiveFacet
+    objective = {
+        "type": "solve_mystery", "description": "Descubre quién robó la corona", "success_conditions": ["acusa"],
+        "components": [{"name": "Guardia", "component_type": "character", "role_in_objective": "culpable"}],
+        "mystery_question": "¿Quién robó la corona?", "mystery_culprit": "Guardia",
+        "mystery_solution": "El Guardia robó la corona durante su ronda",
+        "mystery_clues": [{"name": "Cera", "description": "La Vela tiene cera fresca del Sótano",
+                           "associated_item": "Vela", "relevance_to_mystery": "r"}],
+    }
+    objective.update(overrides)
+    return WorldObjectiveFacet.model_validate({**OBJECTIVE, "objective": objective})
+
+
+def _mystery_roster():
+    from src.ivie.llm.name_matching import NameRoster
+    return NameRoster(location=["Torre"], item=["Vela", "Llave"], character=["Mago", "Guardia"])
+
+
+def test_a_well_formed_mystery_passes():
+    assert facet_pipeline._verify_objective(_mystery_facet(), _mystery_roster()) == []
+
+
+def test_a_mystery_needs_a_culprit_among_the_characters():
+    missing = facet_pipeline._verify_objective(_mystery_facet(mystery_culprit=None), _mystery_roster())
+    outsider = facet_pipeline._verify_objective(_mystery_facet(mystery_culprit="Silas el Sombrío"), _mystery_roster())
+
+    assert any("mystery_culprit" in e and "get_item" in e for e in missing)
+    assert any("mystery_culprit" in e for e in outsider)
+
+
+def test_the_solution_must_name_the_culprit():
+    errors = facet_pipeline._verify_objective(
+        _mystery_facet(mystery_solution="Un agente de una sociedad secreta robó la corona"), _mystery_roster())
+
+    assert any("does not name the culprit" in e for e in errors)
+
+
+def test_a_clue_about_another_object_is_rejected():
+    clue = {"name": "Caja de fósforos", "description": "Una caja de fósforos de un club de París",
+            "associated_item": "Llave", "relevance_to_mystery": "r"}
+
+    errors = facet_pipeline._verify_objective(_mystery_facet(mystery_clues=[clue]), _mystery_roster())
+
+    assert any("does not mention its item 'Llave'" in e for e in errors)
+
+
+def test_mentions_accepts_a_partial_reference_to_a_long_name():
+    assert facet_pipeline.mentions("Con la lupa ves un hilo rojo", "Lupa de Detective")
+    assert not facet_pipeline.mentions("Una caja de fósforos", "A Compartment Key")
+
+
+def test_a_puzzle_that_changes_nothing_is_unplayable():
+    from src.ivie.llm.structured_data_models import GeneratedPuzzle
+    puzzle = GeneratedPuzzle(name="R", puzzle_type="riddle", descriptions=["d"], problem="¿Qué tiene agujas pero no cose?",
+                             answer="reloj", proposed_by_character="Mago", rewards=[], relevance_to_objective="r", hint="h")
+
+    class World:
+        locations = []
+        characters = []
+        puzzles = [puzzle]
+
+    assert "changes nothing" in facet_pipeline.unplayable_puzzles(World())["R"]

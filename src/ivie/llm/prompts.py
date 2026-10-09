@@ -575,12 +575,12 @@ def world_size_note(language: str = 'es') -> str:
         return (f"\n**TAMAÑO DEL MUNDO (OBLIGATORIO):** El mundo tendrá {locations} ubicaciones, {objects} objetos y "
                 f"{npcs} personajes además del jugador. El objetivo debe poder cumplirse teniendo, alcanzando, "
                 f"encontrando o entregando objetos, lugares o personajes de ese mundo, o, si es un misterio, descubriendo "
-                f"pistas en esos objetos; nada de reparar, reprogramar o activar cosas. No prometas cantidades que el "
+                f"quién de esos personajes es el responsable a partir de pistas en esos objetos; nada de reparar, reprogramar o activar cosas. No prometas cantidades que el "
                 f"mundo no puede tener (por ejemplo, 'reunir cinco fragmentos' o 'encontrar tres nodos').\n")
     return (f"\n**WORLD SIZE (MANDATORY):** The world will have {locations} locations, {objects} items and {npcs} "
             f"characters besides the player. The objective must be completable by holding, reaching, finding "
-            f"or delivering items, places or characters of that world, or, for a mystery, by discovering clues in those "
-            f"items; no repairing, reprogramming or activating things. Do not promise quantities the world "
+            f"or delivering items, places or characters of that world, or, for a mystery, by finding out which of those "
+            f"characters is responsible from clues in those items; no repairing, reprogramming or activating things. Do not promise quantities the world "
             f"cannot hold (e.g. 'gather five fragments' or 'find three nodes').\n")
 
 
@@ -596,7 +596,7 @@ def PROMPT_STEP_1_CONCEPT(language: str = 'es') -> str:
 - Decide el tono (aventura, misterio, drama, comedia, etc.)
 
 **INSPIRACIÓN TEMÁTICA (elige uno o combina):**
-- **Misterio**: Resolver un crimen, encontrar un tesoro perdido, descubrir un secreto
+- **Misterio**: Descubrir quién cometió un crimen, un robo o una traición
 - **Aventura**: Rescatar a alguien, explorar ruinas, completar una misión
 - **Supervivencia**: Escapar de un lugar, conseguir recursos, encontrar la salida
 - **Social**: Convencer personajes, reunir información, mediar conflictos
@@ -640,7 +640,7 @@ El concepto debe ser cohesivo, interesante y proporcionar una base sólida para 
 - Decide the tone (adventure, mystery, drama, comedy, etc.)
 
 **THEMATIC INSPIRATION (choose one or combine):**
-- **Mystery**: Solve a crime, find a lost treasure, uncover a secret
+- **Mystery**: Find out who committed a crime, a theft or a betrayal
 - **Adventure**: Rescue someone, explore ruins, complete a mission
 - **Survival**: Escape from a place, gather resources, find the way out
 - **Social**: Persuade characters, gather information, mediate conflicts
@@ -881,7 +881,8 @@ Entidades clave a desarrollar:
 **INSTRUCCIONES ESPECIALES PARA OBJETIVOS DE MISTERIO:**
 Si el objetivo principal es resolver un misterio (type: "solve_mystery"), DEBES incluir:
 1. **mystery_clues**: Lista detallada de pistas que el jugador puede descubrir
-2. **mystery_solution**: Solución completa del misterio
+2. **mystery_solution**: Solución completa del misterio, que nombra al culpable
+2b. **mystery_question** y **mystery_culprit**: la pregunta (quién es responsable de qué) y el nombre exacto del PERSONAJE culpable; el jugador gana acusándolo. Si la meta es encontrar un objeto, usa get_item
 3. **CRÍTICO**: Cada pista debe estar asociada ÚNICAMENTE con un OBJETO/ITEM físico que existe en el mundo - NUNCA con personajes o ubicaciones
 4. **CRÍTICO**: El "associated_item" debe ser exactamente el nombre de un objeto que aparece en la lista de items del mundo
 
@@ -1012,7 +1013,8 @@ Key entities to develop:
 **SPECIAL INSTRUCTIONS FOR MYSTERY OBJECTIVES:**
 If the main objective is to solve a mystery (type: "solve_mystery"), you MUST include:
 1. **mystery_clues**: Detailed list of clues that the player can discover
-2. **mystery_solution**: Complete solution to the mystery
+2. **mystery_solution**: Complete solution to the mystery, naming the culprit
+2b. **mystery_question** and **mystery_culprit**: the question (who is responsible for what) and the exact name of the guilty CHARACTER; the player wins by accusing them. If the goal is to find an object, use get_item
 3. **CRITICAL**: Each clue must be associated ONLY with a physical OBJECT/ITEM that exists in the world - NEVER with characters or locations
 4. **CRITICAL**: The "associated_item" must be exactly the name of an object that appears in the world's items list
 

@@ -110,6 +110,15 @@ def _canonicalize_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> N
     for clue in objective.mystery_clues or []:
         clue.associated_item = roster.canonical('item', clue.associated_item)
         clue.item_location = roster.canonical('location', clue.item_location)
+    objective.mystery_culprit = roster.canonical('character', objective.mystery_culprit)
+
+
+def mentions(text: str, name: str) -> bool:
+    """Whether a text refers to a name: at least half of the name's significant words (four letters
+    or more, accents and case ignored) appear in it. "Lupa de Detective" is mentioned by "la lupa"."""
+    words = set(normalize_name(text or "").split())
+    significant = [word for word in normalize_name(name or "").split() if len(word) >= 4] or normalize_name(name or "").split()
+    return bool(significant) and 2 * sum(word in words for word in significant) >= len(significant)
 
 
 def _canonicalize_puzzle_stage(stage: PuzzleStageResult, roster: NameRoster) -> None:
@@ -165,9 +174,29 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
         components.setdefault(kind, []).append(component.name)
 
     if objective_type == 'solve_mystery':
+        # A mystery is "who is responsible": the player wins by accusing the culprit once every
+        # clue is found, so the culprit must be a character the player can name
+        culprit = objective.mystery_culprit
+        if not culprit or culprit not in roster.names('character'):
+            errors.append(f"A solve_mystery objective needs `mystery_culprit`: the exact name of the character "
+                          f"responsible, from {sorted(roster.names('character'))}. If the goal is to find or "
+                          f"recover something rather than to find out who is responsible, use get_item instead.")
+        elif objective.mystery_solution and not mentions(objective.mystery_solution, culprit):
+            errors.append(f"The mystery_solution does not name the culprit '{culprit}'. It must tell how "
+                          f"'{culprit}' did it, with no other culprit.")
+        if not (objective.mystery_question or "").strip():
+            errors.append("A solve_mystery objective needs `mystery_question`: who is responsible for what "
+                          "(e.g. 'Who stole the Midnight Eye?').")
         clues = objective.mystery_clues or []
         if not clues:
             errors.append("A solve_mystery objective needs mystery_clues.")
+        # The clue is what the player finds by examining its item; a clue about some other object
+        # ("a matchbook" on a key) makes the narration describe an object that does not exist
+        for clue in clues:
+            if clue.associated_item in roster.names('item') and not mentions(f"{clue.name} {clue.description}", clue.associated_item):
+                errors.append(f"Clue '{clue.name}' does not mention its item '{clue.associated_item}'. A clue is "
+                              f"what the player finds by examining that item: describe it as something in or on "
+                              f"'{clue.associated_item}' and name it, without objects that are not in the lists.")
         clue_items = [clue.associated_item for clue in clues]
         unknown = [name for name in clue_items if name not in roster.names('item')]
         if unknown:
@@ -369,9 +398,12 @@ def unplayable_puzzles(world) -> dict:
     - Its statement is not a question: it only refers to a puzzle ("Solve Elara's riddle to gain her
       trust") instead of stating it, so there is nothing to answer.
     - Its statement contains its own answer.
+    - Solving it changes nothing: no reward, no passage it opens, no character waiting for it.
     """
     gating = {getattr(blocked.required_to_unblock, 'puzzle_name', None)
               for location in world.locations for blocked in location.blocked_passages}
+    required = {getattr(requirement, 'puzzle_name', None) for character in world.characters
+                if character.interaction is not None for requirement in character.interaction.requires}
     problems = {}
     for puzzle in world.puzzles:
         statement = (puzzle.problem or "").strip()
@@ -385,6 +417,9 @@ def unplayable_puzzles(world) -> dict:
                                      "challenge the player must answer, not an instruction like 'solve the riddle'")
         elif answer_words and len(answer_words) >= 3 and f" {answer_words} " in statement_words:
             problems[puzzle.name] = "its `problem` contains its own answer"
+        elif not puzzle.rewards and puzzle.name not in gating | required:
+            problems[puzzle.name] = ("solving it changes nothing: give it a reward (an item, or a passage it opens) "
+                                     "or make a blocked passage require it")
     return problems
 
 

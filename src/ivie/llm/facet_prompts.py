@@ -282,12 +282,17 @@ def PROMPT_FACET_OBJECTIVE(concept, skeleton, language: str = 'es', previous_err
 - Todo componente DEBE existir con su nombre exacto en las listas de arriba
 - La `description` del objetivo debe corresponder EXACTAMENTE a sus componentes: si menciona una cantidad, debe ser la cantidad de componentes; no menciones elementos que no estén en las listas, ni una cantidad de pistas distinta de las `mystery_clues` que defines, ni acciones que el juego no puede comprobar (reparar, reprogramar, activar): la meta es tener, alcanzar, encontrar o entregar
 
-**SI EL OBJETIVO ES UN MISTERIO (type: "solve_mystery"), DEBES incluir:**
-1. **mystery_clues**: al menos 3-5 pistas que el jugador pueda descubrir, que conduzcan lógicamente a la solución
-2. **mystery_solution**: la solución completa del misterio
-3. **CRÍTICO**: `associated_item` DEBE ser el nombre exacto de un OBJETO de la lista - NUNCA un personaje ni una ubicación. Los jugadores descubren pistas al interactuar con objetos físicos
-3b. **CRÍTICO - UN OBJETO DISTINTO POR PISTA**: dos pistas NO pueden compartir el mismo `associated_item`. Cada pista debe apuntar a un objeto diferente, porque un objeto solo se consigue una vez. Si tienes menos objetos que pistas, escribe menos pistas
-4. **CRÍTICO**: `item_location` DEBE ser el nombre exacto de una UBICACIÓN de la lista
+**SI EL OBJETIVO ES UN MISTERIO (type: "solve_mystery"):**
+Un misterio en este juego es SIEMPRE descubrir QUIÉN es responsable de un crimen, robo o traición. El jugador reúne las pistas y gana cuando acusa al culpable. Si la meta es encontrar o recuperar un objeto (un tesoro, una joya robada), NO es un misterio: usa get_item.
+1. **mystery_question**: la pregunta que el jugador debe responder (ej. "¿Quién robó el Ojo de Medianoche?")
+2. **mystery_culprit**: el nombre exacto de un PERSONAJE de la lista que es el responsable. Nunca el jugador, nunca alguien que no esté en la lista
+3. **mystery_clues**: 3 pistas que señalen al culpable. Cada pista es lo que el jugador encuentra al examinar su `associated_item`: descríbela como algo que está en ese objeto o sobre ese objeto, y nómbralo (ej. en la "Lupa de Detective": "Con la lupa ves un hilo de seda roja enganchado en el marco"). No menciones objetos que no estén en la lista
+4. **mystery_solution**: cómo ocurrió, nombrando al culpable y coherente con las pistas
+5. **components**: un solo componente, el culpable (tipo "character")
+6. La `description` pide descubrir al responsable; no pidas recuperar objetos, entregar pruebas ni otras metas
+7. **CRÍTICO**: `associated_item` DEBE ser el nombre exacto de un OBJETO de la lista - NUNCA un personaje ni una ubicación
+7b. **CRÍTICO - UN OBJETO DISTINTO POR PISTA**: dos pistas NO pueden compartir el mismo `associated_item`. Si tienes menos objetos que pistas, escribe menos pistas
+8. **CRÍTICO**: `item_location` DEBE ser el nombre exacto de una UBICACIÓN de la lista
 
 **SI EL OBJETIVO NO ES UN MISTERIO, DEBES incluir:**
 1. **completion_narration**: una descripción narrativa de lo que sucede tras completar el objetivo, que dé una conclusión satisfactoria y explique las consecuencias del logro
@@ -319,12 +324,17 @@ Ejemplos de completion_narration:
 - Every component MUST exist by its exact name in the lists above
 - The objective's `description` must match its components EXACTLY: if it mentions a quantity, it must be the number of components; do not mention elements that are not in the lists, nor a number of clues different from the `mystery_clues` you define, nor actions the game cannot check (repair, reprogram, activate): the goal is to hold, reach, find or deliver
 
-**IF THE OBJECTIVE IS A MYSTERY (type: "solve_mystery"), you MUST include:**
-1. **mystery_clues**: at least 3-5 clues the player can discover, leading logically to the solution
-2. **mystery_solution**: the complete solution to the mystery
-3. **CRITICAL**: `associated_item` MUST be the exact name of an ITEM from the list - NEVER a character or a location. Players discover clues by interacting with physical objects
-3b. **CRITICAL - ONE DISTINCT ITEM PER CLUE**: two clues may NOT share the same `associated_item`. Each clue must point at a different item, because an item is only ever acquired once. If you have fewer items than clues, write fewer clues
-4. **CRITICAL**: `item_location` MUST be the exact name of a LOCATION from the list
+**IF THE OBJECTIVE IS A MYSTERY (type: "solve_mystery"):**
+A mystery in this game is ALWAYS finding out WHO is responsible for a crime, theft or betrayal. The player gathers the clues and wins by accusing the culprit. If the goal is to find or recover an object (a treasure, a stolen jewel), it is NOT a mystery: use get_item.
+1. **mystery_question**: the question the player must answer (e.g. "Who stole the Midnight Eye?")
+2. **mystery_culprit**: the exact name of a CHARACTER from the list who is responsible. Never the player, never someone not on the list
+3. **mystery_clues**: 3 clues pointing to the culprit. Each clue is what the player finds by examining its `associated_item`: describe it as something in or on that item, and name it (e.g. on the "Detective's Magnifying Glass": "Through the magnifying glass you spot a red silk thread caught in the frame"). Do not mention items that are not on the list
+4. **mystery_solution**: how it happened, naming the culprit and consistent with the clues
+5. **components**: a single component, the culprit (type "character")
+6. The `description` asks to find out who is responsible; do not ask to recover items, deliver evidence or other goals
+7. **CRITICAL**: `associated_item` MUST be the exact name of an ITEM from the list - NEVER a character or a location
+7b. **CRITICAL - ONE DISTINCT ITEM PER CLUE**: two clues may NOT share the same `associated_item`. If you have fewer items than clues, write fewer clues
+8. **CRITICAL**: `item_location` MUST be the exact name of a LOCATION from the list
 
 **IF THE OBJECTIVE IS NOT A MYSTERY, you MUST include:**
 1. **completion_narration**: a narrative description of what happens after the objective is completed, giving a satisfying conclusion and explaining the consequences of the achievement
@@ -394,8 +404,8 @@ Objetivo: Conseguir el Amuleto Mágico
 5. **NO CRAFTING**: el motor no soporta crear ni transformar objetos. No pidas al jugador combinar o alterar objetos. Las recompensas son objetos que ya existen y se usan directamente
 6. **OBSTÁCULO vs. LLAVE**: el `obstacle_name` es lo que bloquea el camino (p. ej. "puerta cerrada"); el `required_to_unblock` es la llave que lo quita (p. ej. "llave de hierro"). La llave nunca es el obstáculo. `required_to_unblock` solo puede ser de tipo `item` (un objeto que exista) o `puzzle` (un puzzle que estés creando): el motor no sabe abrir un pasaje de ninguna otra forma
 7. **QUIÉN PROPONE EL PUZZLE**: un puzzle lo propone un personaje (`proposed_by_character`) o un OBJETO que el jugador examina. Para lo segundo usa `proposed_by_location` con el nombre EXACTO de ese OBJETO: a pesar del nombre del campo, NO es una ubicación. La ubicación del puzzle va en `location`
-8. **RESPUESTA CORTA**: `answer` debe ser una palabra o una frase muy breve que el jugador pueda escribir tal cual (ej. "luna", "1885", "el reloj"). El motor busca esa respuesta en lo que escribe el jugador, así que una explicación larga hace el puzzle imposible. En `accepted_answers` pon de 2 a 5 formas cortas en que un jugador podría decir la MISMA respuesta (la palabra clave sola, sin artículo, sinónimos evidentes). Ej.: answer "El Eco Silente" → accepted_answers ["eco", "el eco", "eco silente"]
-10. **ENUNCIADO REAL**: `problem` es exactamente lo que se le dice al jugador: la pregunta o el desafío concreto (ej. "¿Qué tiene agujas pero no cose?"). NO escribas una instrucción como "Resuelve el acertijo de Elara para ganar su confianza": eso no le da al jugador nada que responder. El enunciado no puede contener la respuesta
+8. **RESPUESTA CORTA**: `answer` debe ser una palabra o una frase muy breve que el jugador pueda escribir tal cual (ej. "luna", "1885", "el reloj"). El motor busca esa respuesta en lo que escribe el jugador, así que una explicación larga hace el puzzle imposible. En `accepted_answers` pon de 2 a 5 formas cortas en que un jugador podría decir la MISMA respuesta (la palabra clave sola, sin artículo, sinónimos evidentes). Ej.: answer "El Eco Silente" → accepted_answers ["eco", "el eco", "eco silente"]. Si la respuesta es una secuencia, una lista o un número, hace falta completa: nunca aceptes una parte (para "corto-largo-corto-largo", no "corto-largo")
+10. **ENUNCIADO REAL**: `problem` es exactamente lo que se le dice al jugador: la pregunta o el desafío concreto (ej. "¿Qué tiene agujas pero no cose?"). NO escribas una instrucción como "Resuelve el acertijo de Elara para ganar su confianza": eso no le da al jugador nada que responder. El enunciado no puede contener la respuesta, y debe incluir todos los datos necesarios para responder (si habla de "la secuencia de números", escribe la secuencia)
 9. **RECOMPENSAS NUEVAS**: nunca recompenses con un objeto que el jugador ya lleve en su inventario al empezar, ni bloquees un pasaje con un objeto que ya lleva: lo tendría gratis
 
 **REGLAS OBLIGATORIAS PARA PISTAS:**
@@ -456,8 +466,8 @@ Objective: Obtain the Magic Amulet
 5. **NO CRAFTING**: the engine does not support creating or transforming items. Do not ask the player to combine or alter objects. Rewards are existing items used directly
 6. **OBSTACLE vs. KEY**: `obstacle_name` is what blocks the way (e.g. "locked door"); `required_to_unblock` is the key that removes it (e.g. "iron key"). The key is never the obstacle. `required_to_unblock` may ONLY be of type `item` (an existing item) or `puzzle` (a puzzle you are creating): the engine cannot open a passage any other way
 7. **WHO PROPOSES THE PUZZLE**: a puzzle is proposed by a character (`proposed_by_character`) or by an ITEM the player examines. For the latter, put the EXACT name of that ITEM in `proposed_by_location`: despite the field's name, it is NOT a location. The puzzle's location goes in `location`
-8. **SHORT ANSWER**: `answer` must be a single word or a very short phrase the player can type as is (e.g. "moon", "1885", "the clock"). The engine looks for that answer in what the player types, so a long explanation makes the puzzle impossible. In `accepted_answers` put 2 to 5 short ways a player could say the SAME answer (the key word alone, without articles, obvious synonyms). E.g. answer "The Silent Echo" → accepted_answers ["echo", "the echo", "silent echo"]
-10. **REAL STATEMENT**: `problem` is exactly what the player is told: the actual question or challenge (e.g. "What has hands but cannot clap?"). Do NOT write an instruction such as "Solve Elara's riddle to gain her trust": that gives the player nothing to answer. The statement must not contain the answer
+8. **SHORT ANSWER**: `answer` must be a single word or a very short phrase the player can type as is (e.g. "moon", "1885", "the clock"). The engine looks for that answer in what the player types, so a long explanation makes the puzzle impossible. In `accepted_answers` put 2 to 5 short ways a player could say the SAME answer (the key word alone, without articles, obvious synonyms). E.g. answer "The Silent Echo" → accepted_answers ["echo", "the echo", "silent echo"]. If the answer is a sequence, a list or a number, all of it is needed: never accept a part (for "short-long-short-long", not "short-long")
+10. **REAL STATEMENT**: `problem` is exactly what the player is told: the actual question or challenge (e.g. "What has hands but cannot clap?"). Do NOT write an instruction such as "Solve Elara's riddle to gain her trust": that gives the player nothing to answer. The statement must not contain the answer, and must include every piece of data needed to answer it (if it mentions "the sequence of numbers", write the sequence)
 9. **NEW REWARDS**: never reward an item the player already carries at the start, and never block a passage with an item they already carry: they would get past it for free
 
 **MANDATORY HINT RULES:**

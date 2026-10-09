@@ -57,14 +57,36 @@ class ItemCollection:
 
 
 class MysteryObjective:
-    """A mystery objective that requires discovering clues."""
-    def __init__(self, name: str, description: str, clues: 'list[MysteryClue]', 
-                 mystery_solution: str):
+    """A mystery: find out who is responsible.
+
+    The clues are the evidence, discovered by taking or examining their items. Once every clue is
+    known the player can accuse someone; the mystery is solved only when they accuse the culprit.
+    A mystery built without a culprit (worlds generated before accusations existed) is solved by
+    discovering every clue.
+    """
+    def __init__(self, name: str, description: str, clues: 'list[MysteryClue]',
+                 mystery_solution: str, culprit: str = None, question: str = ""):
         self.name = name
         self.description = description
         self.clues = clues
         self.mystery_solution = mystery_solution
-    
+        self.culprit = culprit
+        """exact name of the character responsible, the answer to the mystery"""
+        self.question = question
+        """what the player has to find out, e.g. "Who stole the Midnight Eye?" """
+        self.solved = False
+        """whether the player has accused the culprit"""
+
+    def ready_to_accuse(self) -> bool:
+        """Whether the player has gathered every clue, the evidence an accusation needs."""
+        return all(clue.discovered for clue in self.clues)
+
+    def accuse(self, character_name: str) -> bool:
+        """Record an accusation; True if it names the culprit. Only valid once every clue is known."""
+        if self.ready_to_accuse() and getattr(self, 'culprit', None) and character_name == self.culprit:
+            self.solved = True
+        return getattr(self, 'solved', False)
+
     def discover_clue_for_item(self, item_name: str):
         """Mark a clue as discovered when the associated item is interacted with."""
         for clue in self.clues:
@@ -80,8 +102,10 @@ class MysteryObjective:
         return discovered, total
     
     def is_completed(self):
-        """Check if all clues have been discovered."""
-        return all(clue.discovered for clue in self.clues)
+        """Solved by accusing the culprit; a mystery without a culprit, by discovering every clue."""
+        if getattr(self, 'culprit', None):
+            return getattr(self, 'solved', False)
+        return self.ready_to_accuse()
     
     def get_discovered_clues(self):
         """Get list of discovered clues."""
@@ -858,8 +882,13 @@ class World:
               else f"You have to give {first.names('en')} to {second.name}.")
     if kinds[1] == 'MysteryObjective':
       total = len(second.clues)
-      return (f"Tienes que resolver el misterio: descubre las {total} pistas." if es
-              else f"You have to solve the mystery: discover the {total} clues.")
+      if not getattr(second, 'culprit', None):
+        return (f"Tienes que resolver el misterio: descubre las {total} pistas." if es
+                else f"You have to solve the mystery: discover the {total} clues.")
+      question = (getattr(second, 'question', '') or '').strip()
+      question = f" {question}" if question else ""
+      return (f"Tienes que resolver el misterio:{question} Descubre las {total} pistas y luego di quién es el responsable." if es
+              else f"You have to solve the mystery:{question} Discover the {total} clues, then say who is responsible.")
     templates = {
       ('Character', 'Location'): ("Tienes que llegar a {1}.", "You have to reach {1}."),
       ('Character', 'Item'): ("Tienes que conseguir {1}.", "You have to get {1}."),
@@ -1285,12 +1314,15 @@ class World:
       return answer
 
   @staticmethod
+  def answer_words(value: str) -> str:
+    """An answer as plain words: lowercase, no accents, no punctuation, no leading article."""
+    from ..llm.name_matching import normalize_name
+    return " ".join(normalize_name(value or "").split())
+
+  @staticmethod
   def answer_in_text(expected: str, text: str) -> bool:
     """Whether the expected answer appears in the text as whole words, ignoring case, accents and punctuation."""
-    from ..llm.name_matching import normalize_name
-    def words(value):
-      return " ".join(normalize_name(value or "").split())
-    expected_words, text_words = words(expected), words(text)
+    expected_words, text_words = World.answer_words(expected), World.answer_words(text)
     return bool(expected_words) and f" {expected_words} " in f" {text_words} "
 
   def solve_puzzle(self, puzzle_name: str, answer: str, player_input: str = None) -> bool:

@@ -159,6 +159,8 @@ def get_objective_info(world, language):
                 remaining = total - discovered
                 if remaining > 0:
                     raw_objective += f"\n\n🔍 Quedan {remaining} pistas por descubrir. Interactúa con objetos para encontrarlas."
+                elif getattr(mystery_obj, 'culprit', None) and not mystery_obj.is_completed():
+                    raw_objective += "\n\n⚖️ Ya tienes todas las pistas: di quién es el responsable."
             else:
                 raw_objective += f"\n\n🔍 **Mystery Progress:** {discovered}/{total} clues discovered"
                 discovered_clues = mystery_obj.get_discovered_clues()
@@ -170,6 +172,8 @@ def get_objective_info(world, language):
                 remaining = total - discovered
                 if remaining > 0:
                     raw_objective += f"\n\n🔍 {remaining} clues remain to be discovered. Interact with objects to find them."
+                elif getattr(mystery_obj, 'culprit', None) and not mystery_obj.is_completed():
+                    raw_objective += "\n\n⚖️ You have every clue: say who is responsible."
         else:
             # Enhanced handling for different objective types based on tuple structure
             player_or_item = world.objective[0]
@@ -463,18 +467,25 @@ def generate_narration(world, last_player_position, response_update, language, n
 
     return answer, last_player_position
 
-def check_objective_completion(world, answer, language, include_completion_text=True):
-    """Append the completion banner. With include_completion_text=False the pre-written ending is
-    left out: the narrator already wrote one from what happened, while the pre-written text may
-    describe steps the game never asked for ("with the capacitor reprogrammed...")."""
-    if world.check_objective():
+def objective_completed(world) -> bool:
+    return bool(getattr(world, 'objective', None)) and world.check_objective()
+
+
+def check_objective_completion(world, answer, language, include_completion_text=True, completed_before=False):
+    """Append the completion banner on the turn the objective is completed (not on every later
+    turn). With include_completion_text=False the pre-written ending is left out: the narrator
+    already wrote one from what happened, while the pre-written text may describe steps the game
+    never asked for ("with the capacitor reprogrammed..." or a culprit who is not in the world)."""
+    if not completed_before and world.check_objective():
         answer += "\n\n🎯¡Completaste el objetivo!" if language == 'es' else "\n\n🎯You have completed your quest!"
+        if not include_completion_text:
+            return answer
 
         if hasattr(world, 'objective_data') and world.objective_data:
             obj_type = world.objective_data.type.value if hasattr(world.objective_data.type, 'value') else str(world.objective_data.type)
             if obj_type in ["SOLVE_MYSTERY", "solve_mystery"] and hasattr(world.objective_data, 'mystery_solution') and world.objective_data.mystery_solution:
                 answer += f"\n\n🎭 **Solución del Misterio:**\n{world.objective_data.mystery_solution}" if language == 'es' else f"\n\n🎭 **Mystery Solution:**\n{world.objective_data.mystery_solution}"
-            elif include_completion_text and hasattr(world.objective_data, 'completion_narration') and world.objective_data.completion_narration:
+            elif hasattr(world.objective_data, 'completion_narration') and world.objective_data.completion_narration:
                 answer += f"\n\n📖 **Final:**\n{world.objective_data.completion_narration}" if language == 'es' else f"\n\n📖 **Conclusion:**\n{world.objective_data.completion_narration}"
 
         elif (hasattr(world, 'objective') and world.objective and isinstance(world.objective, tuple) and len(world.objective) >= 2):
@@ -502,6 +513,7 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
     """One turn in three steps: the reasoning model interprets the action (TurnIntent), the engine
     applies what the rules allow (turn_engine.apply_turn), and the narrative model narrates the
     engine's facts. Returns the narration."""
+    completed_before = objective_completed(world)
     log = game_log_dictionary[number_of_turns]
     log["date"] = time.ctime(time.time())
     log["previous_symbolic_world_state"] = jsonpickle.encode(world, unpicklable=False)
@@ -519,7 +531,8 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
 
     # 1. Interpret: what does the player attempt?
     system_msg, user_msg, intent_model = prompt_interpret_action(
-        world.render_world(language=language, reveal_answers=False), message, language, relevant_memories_text)
+        world.render_world(language=language, reveal_answers=False), message, language, relevant_memories_text,
+        characters=[c.name for c in world.characters.values() if c is not world.player])
     step_started = time.perf_counter()
     try:
         response = reasoning_model.prompt_model_structured(prompt=system_msg + "\n\n" + user_msg, response_schema=intent_model)
@@ -531,7 +544,7 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
 
     # 2. Apply: the engine decides what actually happens
     outcome = apply_turn(world, intent, message)
-    objective_completed = bool(world.objective) and world.check_objective()
+    just_completed = not completed_before and objective_completed(world)
     print(f"🛠️ Engine facts for '{message}':\n{outcome.render(language)}")
 
     # 3. Narrate the facts
@@ -541,7 +554,7 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
         outcome.render(language), world.player.visited_locations.get(location.name, []),
         arrived=outcome.arrived_at is not None, first_visit=outcome.first_visit,
         objective=world.objective_statement(language) if world.objective else "",
-        objective_completed=objective_completed, language=language)
+        objective_completed=just_completed, language=language, completed_before=completed_before)
     step_started = time.perf_counter()
     narration = narrative_model.prompt_model(system_msg=system_msg, user_msg=user_msg)
     print(f"[TIMING] turno: narrador {time.perf_counter() - step_started:.1f}s")
@@ -652,6 +665,7 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
 
         number_of_turns += 1
         turn_started = time.perf_counter()
+        completed_before = objective_completed(world)
         game_log_dictionary[number_of_turns] = {}
 
         visited_locations.add(world.player.location.name)
@@ -671,7 +685,8 @@ def create_game_loop(world, reasoning_model, narrative_model, language, visited_
             step_started = time.perf_counter()
             answer, last_player_position = generate_narration(world, last_player_position, response_update, language, narrative_model)
             print(f"[TIMING] turno: narración de escena {time.perf_counter() - step_started:.1f}s")
-        answer = check_objective_completion(world, answer, language, include_completion_text=not narrate_from_outcome)
+        answer = check_objective_completion(world, answer, language, include_completion_text=not narrate_from_outcome,
+                                            completed_before=completed_before)
 
         world_state_formatted = world.format_world_state_for_chat(language=language)
         answer += f"\n\n---\n{world_state_formatted}"

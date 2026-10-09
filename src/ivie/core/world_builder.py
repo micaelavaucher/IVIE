@@ -222,7 +222,14 @@ def set_objective_from_generated(objective_data, items_dict, locations_dict, cha
 
             if valid_clues:
                 mystery_solution = getattr(objective_data, 'mystery_solution', 'Mystery solution not specified')
-                mystery_objective = MysteryObjective(name=f"Mystery: {objective_data.description}", description=objective_data.description, clues=valid_clues, mystery_solution=mystery_solution)
+                # Without a culprit among the characters there is nobody to accuse, and the mystery is
+                # solved by discovering the clues, as in worlds generated before accusations existed
+                culprit = getattr(objective_data, 'mystery_culprit', None)
+                if culprit and not any(c.name == culprit for c in characters_list if c is not player):
+                    print(f"   ⚠️ Mystery culprit '{culprit}' is not a character in the world; solved by the clues alone")
+                    culprit = None
+                mystery_objective = MysteryObjective(name=f"Mystery: {objective_data.description}", description=objective_data.description, clues=valid_clues, mystery_solution=mystery_solution,
+                                                     culprit=culprit, question=getattr(objective_data, 'mystery_question', None) or "")
                 print(f"   ✅ Created mystery objective with {len(valid_clues)} valid clues")
                 return (player, mystery_objective)
             else:
