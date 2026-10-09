@@ -212,33 +212,42 @@ def _get_generation_model():
     print(f"🤖 Using model for world generation: {reasoning_model_name}")
     return model, reasoning_model_name
 
+GENERATION_ATTEMPTS = 2
+"""Whole generations tried before giving up. Each step already retries with feedback; a concept
+whose skeleton or facets keep failing is better replaced by a new concept than shown as an error."""
+
+
 def create_world_incrementally(theme: str, language: str, progress_callback=None) -> GeneratedWorld:
     print(f"⚙️ Iniciando generación incremental del mundo con tema: '{theme}'")
-    started = time.perf_counter()
-    model, model_name = _get_generation_model()
-
-    # Paso 1: Generar el concepto general
-    _report(progress_callback, "📝 Paso 1: Generando concepto del mundo...")
-    step_started = time.perf_counter()
-    concept = run_step_1_concept(theme, language, model)
-    _log_timing("Paso 1 (concepto)", step_started)
-    _report(progress_callback, f"✅ Concepto creado: '{concept.title}'")
-
-    return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
+    return _generate_world(lambda model: run_step_1_concept(theme, language, model), language, progress_callback)
 
 def create_world_incrementally_generate(language: str, progress_callback=None) -> GeneratedWorld:
     print(f"⚙️ Iniciando generación incremental del mundo en modo 'generate'")
+    return _generate_world(lambda model: run_step_1_generate_concept(language, model), language, progress_callback)
+
+def _is_quota_error(error) -> bool:
+    text = str(error)
+    return "RESOURCE_EXHAUSTED" in text or "429" in text
+
+def _generate_world(make_concept, language, progress_callback) -> GeneratedWorld:
+    """Steps 1-4; when they fail, start over once from a new concept (not on quota errors, which a
+    retry would only make worse)."""
     started = time.perf_counter()
     model, model_name = _get_generation_model()
-
-    # Paso 1: Generar el concepto general
-    _report(progress_callback, "📝 Paso 1: Generando concepto del mundo...")
-    step_started = time.perf_counter()
-    concept = run_step_1_generate_concept(language, model)
-    _log_timing("Paso 1 (concepto)", step_started)
-    _report(progress_callback, f"✅ Concepto creado: '{concept.title}'")
-
-    return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
+    for attempt in range(1, GENERATION_ATTEMPTS + 1):
+        try:
+            # Paso 1: Generar el concepto general
+            _report(progress_callback, "📝 Paso 1: Generando concepto del mundo...")
+            step_started = time.perf_counter()
+            concept = make_concept(model)
+            _log_timing("Paso 1 (concepto)", step_started)
+            _report(progress_callback, f"✅ Concepto creado: '{concept.title}'")
+            return _create_world_from_concept(concept, language, model, model_name, progress_callback, started)
+        except Exception as error:
+            if attempt == GENERATION_ATTEMPTS or _is_quota_error(error):
+                raise
+            # "[WARNING]" is what the UI shows as "regenerating"
+            _report(progress_callback, f"[WARNING] Generation attempt {attempt} failed ({error}); starting over from a new concept")
 
 def _generate_skeleton(concept, language, model, progress_callback, max_attempts=3):
     """Step 2 with its size and uniqueness checks."""

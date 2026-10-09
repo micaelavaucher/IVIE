@@ -448,3 +448,38 @@ def test_a_description_promising_more_items_than_its_components_is_rejected():
     errors = facet_pipeline._verify_objective(facet, roster)
 
     assert any("promises 3 items" in e for e in errors)
+
+
+def test_a_failed_generation_starts_over_from_a_new_concept(monkeypatch, fake_model):
+    monkeypatch.setattr(generation_pipeline, "get_llm", lambda name: fake_model)
+    monkeypatch.setattr(generation_pipeline, "get_generation_flags",
+                        lambda config=None: {"facets": True, "puzzle_stage_only": True, "parallel": False})
+    real = generation_pipeline._generate_skeleton
+    calls = []
+
+    def skeleton_fails_first(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("Failed to generate a valid skeleton after multiple attempts.")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(generation_pipeline, "_generate_skeleton", skeleton_fails_first)
+    messages = []
+
+    world = generation_pipeline.create_world_incrementally("tema", "es", progress_callback=messages.append)
+
+    assert len(world.locations) == 4 and len(fake_model.prompts["WorldConcept"]) == 2
+    assert any(m.startswith("[WARNING] Generation attempt 1 failed") for m in messages)
+
+
+def test_a_quota_error_is_not_retried(monkeypatch, fake_model):
+    monkeypatch.setattr(generation_pipeline, "get_llm", lambda name: fake_model)
+
+    def quota(*args, **kwargs):
+        raise RuntimeError("429 RESOURCE_EXHAUSTED")
+
+    monkeypatch.setattr(generation_pipeline, "_generate_skeleton", quota)
+
+    with pytest.raises(RuntimeError):
+        generation_pipeline.create_world_incrementally("tema", "es")
+    assert len(fake_model.prompts["WorldConcept"]) == 1

@@ -46,7 +46,7 @@ def test_accusing_the_culprit_with_every_clue_solves_the_mystery():
 
     outcome = apply_turn(world, _intent(accusation="marlowe"), "acuso a Marlowe")
 
-    assert found.kinds() == ["clue_discovered"]
+    assert found.kinds() == ["examined", "clue_discovered"]
     assert outcome.kinds() == ["mystery_solved"] and world.check_objective()
     assert "Marlowe robó el orbe" in outcome.render('es')  # the narrator writes the ending from it
 
@@ -104,7 +104,7 @@ def test_using_an_item_the_player_does_not_have_is_reported():
 
     assert missing.kinds() == ["item_missing"] and "revólver" in missing.render('es')
     assert elsewhere.kinds() == ["item_missing"]
-    assert at_hand.kinds() == []
+    assert at_hand.kinds() == ["examined"]
 
 
 def test_examining_scenery_the_world_does_not_model_is_not_a_failure():

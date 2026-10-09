@@ -29,6 +29,7 @@ CÓMO LLENAR CADA CAMPO (usa siempre los nombres EXACTOS del estado del mundo):
 - examined_items: objetos del estado que el jugador examina, lee, estudia o manipula sin llevárselos.
 - items_used: objetos que el jugador usa, empuña o dice tener ("uso mi linterna", "disparo con mi revólver"): el nombre exacto si está en el estado, o como lo nombra el jugador si no está. Inclúyelos aunque no los tenga: el motor lo comprueba.
 - characters_addressed: personajes con los que el jugador habla, a los que les pide algo o con los que interactúa.
+- items_shown: objetos que el jugador le muestra o presenta a un personaje sin dárselo (pon también a ese personaje en characters_addressed). Si se lo da, va en moved_objects.
 - puzzle_attempts: acertijos a los que el jugador intenta responder o que dice haber resuelto ("puzzle_name"), con la respuesta que da copiada tal cual de sus palabras ("answer"), o vacía si no da ninguna ("ya lo resolví"). No juzgues si la respuesta es correcta.
 - accusation: si el jugador acusa a alguien o dice quién es el responsable del misterio, el nombre exacto de ese personaje (o el nombre que usó, si no coincide con ninguno). Si no acusa a nadie, déjalo vacío.
 - action_summary: una o dos oraciones con lo que hace el jugador y cómo reaccionan los personajes según su descripción y su interacción. No afirmes si las acciones de arriba funcionan.
@@ -55,6 +56,7 @@ HOW TO FILL EACH FIELD (always use the EXACT names from the world state):
 - examined_items: items from the state that the player examines, reads, studies or handles without taking them.
 - items_used: items the player uses, wields or says they carry ("I use my lantern", "I shoot with my revolver"): the exact name if it is in the state, or as the player names it if not. Include them even if the player does not have them: the engine checks.
 - characters_addressed: characters the player talks to, asks something or interacts with.
+- items_shown: items the player shows or presents to a character without giving them (also list that character in characters_addressed). If they give it, it goes in moved_objects.
 - puzzle_attempts: puzzles the player tries to answer or says they solved ("puzzle_name"), with the answer they give copied word for word from what they wrote ("answer"), or empty if they give none ("I solved it"). Do not judge whether the answer is right.
 - accusation: if the player accuses someone or says who is responsible for the mystery, that character's exact name (or the name they used, if it matches none). Leave it empty if they accuse nobody.
 - action_summary: one or two sentences with what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed.

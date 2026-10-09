@@ -254,6 +254,7 @@ class TurnIntent(BaseModel):
     examined_items: List[str] = Field(default=[], description="Exact names of items the player examines, reads, studies or handles without taking them")
     items_used: List[str] = Field(default=[], description="Items the player uses, wields or says they carry ('I use my lantern', 'I shoot with my revolver'): the exact name if it is in the world state, otherwise as the player names it")
     characters_addressed: List[str] = Field(default=[], description="Exact names of the characters the player talks to, asks something or interacts with")
+    items_shown: List[str] = Field(default=[], description="Exact names of items the player shows or presents to a character without giving them (list that character in characters_addressed)")
     puzzle_attempts: List[PuzzleAttempt] = Field(default=[], description="Puzzles the player tries to answer, or says they solved, in this action. Do not judge whether the answer is right")
     accusation: str = Field(default="", description="If the player accuses someone or says who is responsible for the mystery: that character's exact name, or the name the player used if no character matches. Empty otherwise")
     action_summary: str = Field(description="One or two sentences: what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed")
@@ -266,8 +267,13 @@ class NarrationClaims(BaseModel):
     """
     items_player_receives: List[str] = Field(default=[], description="Items the narration says the player receives, takes, picks up, is handed or puts in their pocket in this scene. Exact names from the list when they are in it, otherwise as the narration names them")
     items_player_holds_or_uses: List[str] = Field(default=[], description="Items the narration says the player holds, carries, wields, uses or shows. Not items the narration says the player does NOT have")
+    items_player_gives_away: List[str] = Field(default=[], description="Items that, according to the narration, the player no longer has at the end of the scene: given away, left behind, or taken by a character and not returned. Not items only shown or handed back")
     items_characters_offer: List[str] = Field(default=[], description="Items a character hands to the player or offers to give them in this scene. Not items a character merely holds, wears or talks about")
     passages_opened: List[str] = Field(default=[], description="Places the narration says a door, path or passage now opens to")
+    items_said_in_this_place: List[str] = Field(default=[], description="Items from the list that the narration says are in this place (lying here, on a table, in a chest), not carried by the player")
+    items_said_already_held: List[str] = Field(default=[], description="Items the narration says the player ALREADY had before this action ('you already have X')")
+    said_already_in_this_place: bool = Field(default=False, description="True only if the narration says the player was ALREADY in this place and did not move ('you are already in X'). False when it says they arrive, return or are back")
+    puzzle_said_solved: bool = Field(default=False, description="True only if the narration itself states that a puzzle or riddle is solved. False when it reports that the player claims to have solved it")
     answer_judged: bool = Field(default=False, description="True only if the narration says that an answer the player gave is right or wrong. False if it says the player gave no answer")
     objective_completed: bool = Field(default=False, description="True only if the narration says the adventure's main mission is accomplished or its mystery solved and the adventure is over. Solving a puzzle is not the main mission")
 

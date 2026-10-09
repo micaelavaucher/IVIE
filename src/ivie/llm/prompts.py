@@ -794,7 +794,7 @@ Concepto del mundo:
 
 **ESTRUCTURA REQUERIDA:**
 - {locations} ubicaciones: Los lugares más importantes para la historia y el objetivo
-- {objects} objetos: Los elementos físicos esenciales para completar el objetivo
+- {objects} objetos: Los elementos físicos esenciales para completar el objetivo. Cada uno es una cosa concreta que se puede ver, tomar y llevar (una llave, un diario, una gema), nunca una idea, una verdad, un secreto o un conocimiento ("La verdadera causa de..." no es un objeto)
 - {npcs} personajes no jugadores: Los NPCs importantes que ayudarán o desafiarán al jugador. El personaje del jugador NO va en esta lista
 
 **REGLAS PARA EL ESQUELETO:**
@@ -823,7 +823,7 @@ World concept:
 
 **REQUIRED STRUCTURE:**
 - {locations} locations: The most important places for the story and the objective
-- {objects} objects: The essential physical elements to complete the objective
+- {objects} objects: The essential physical elements to complete the objective. Each one is a concrete thing that can be seen, taken and carried (a key, a journal, a gem), never an idea, a truth, a secret or a piece of knowledge ("The True Cause of..." is not an object)
 - {npcs} non-player characters: Key NPCs who will help or challenge the player. The player character does NOT go in this list
 
 **RULES FOR THE SKELETON:**

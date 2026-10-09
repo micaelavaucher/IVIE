@@ -146,8 +146,12 @@ def get_objective_info(world, language):
         elif hasattr(obj_component, '__class__') and obj_component.__class__.__name__ == 'MysteryObjective':
             # Special handling for mystery objectives
             mystery_obj = obj_component
-            # The sentence states the real number of clues; the generated description may not
-            raw_objective = f"🎯 {world.objective_statement(language)}" + chr(10) * 2 + mystery_obj.description
+            # The sentence states the question and the real number of clues. The generated description
+            # is left out when there is a question: it promised steps the game does not check
+            # ("present the evidence to Monsieur Dubois")
+            raw_objective = f"🎯 {world.objective_statement(language)}"
+            if not getattr(mystery_obj, 'question', ''):
+                raw_objective += chr(10) * 2 + mystery_obj.description
             discovered, total = mystery_obj.get_completion_progress()
             if language == 'es':
                 raw_objective += f"\n\n🔍 **Progreso del Misterio:** {discovered}/{total} pistas descubiertas"
@@ -505,6 +509,10 @@ def save_game_log(game_log_dictionary, number_of_turns, answer):
     if db_handler and world_id and current_turn_data:
         db_handler.add_turn_to_trace(world_id, number_of_turns, current_turn_data)
 
+NARRATION_REWRITES = 2
+"""how many times a narration that contradicts the world is rewritten before it is shown anyway"""
+
+
 def check_narration_enabled(config=None) -> bool:
     """[Game] CheckNarration: check each narration against the world and rewrite it once if it contradicts it."""
     config = config or load_config()
@@ -573,14 +581,19 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
 
     narration = narrate()
     if check_narration_enabled():
-        step_started = time.perf_counter()
-        problems = narration_problems(world, narration, before, outcome, objective_completed(world), language, reasoning_model)
-        print(f"[TIMING] turno: control de la narración {time.perf_counter() - step_started:.1f}s")
-        if problems:
+        # Each rewrite is checked too, keeping every earlier correction: the first rewrite of a
+        # narration that "picked up" an examined journal picked it up again
+        corrections = []
+        for _ in range(NARRATION_REWRITES):
+            step_started = time.perf_counter()
+            problems = narration_problems(world, narration, before, outcome, objective_completed(world), language, reasoning_model)
+            print(f"[TIMING] turno: control de la narración {time.perf_counter() - step_started:.1f}s")
+            if not problems:
+                break
             print(f"🔁 Narration contradicted the world, rewriting it: {problems}")
-            log["rejected_narration"] = narration
-            log["narration_problems"] = problems
-            narration = narrate(corrections=problems)
+            log.setdefault("rejected_narrations", []).append({"narration": narration, "problems": problems})
+            corrections += [problem for problem in problems if problem not in corrections]
+            narration = narrate(corrections=corrections)
     world.player.visited_locations.setdefault(location.name, []).append(narration)
     if outcome.arrived_at is not None:
         location.visited = True

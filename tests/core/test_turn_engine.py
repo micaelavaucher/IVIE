@@ -97,6 +97,27 @@ def test_an_unmet_item_requirement_withholds_until_the_item_is_given():
     assert given.kinds() == ["item_given", "item_received"] and _names(world.player.inventory) == ["Diario"]
 
 
+def test_showing_the_required_item_meets_the_requirement_and_keeps_it():
+    world = _world()
+    world.characters["Marlowe"].interaction = CharacterInteraction(
+        requires=[ItemRequirement(description="que le muestres la gema", item_name="Gema")], relevance_to_objective="r")
+    apply_turn(world, _intent(moves=[("Gema", "Jugador")]), "tomo la gema")
+
+    shown = apply_turn(world, _intent(items_shown=["Gema"], characters_addressed=["Marlowe"]), "le muestro la gema")
+    received = apply_turn(world, _intent(moves=[("Diario", "Jugador")]), "dame el diario")
+
+    assert shown.kinds() == ["item_shown"] and "requisito queda cumplido" in shown.render('es')
+    assert received.kinds() == ["item_received"] and _names(world.player.inventory) == ["Gema", "Diario"]
+
+
+def test_showing_an_item_the_player_does_not_have_is_refused():
+    world = _world()
+
+    outcome = apply_turn(world, _intent(items_shown=["Diario"]), "le muestro el diario")
+
+    assert outcome.kinds() == ["item_missing"] and world.shown_items == set()
+
+
 def test_giving_or_dropping_what_the_player_does_not_have_is_refused():
     world = _world()
     outcome = apply_turn(world, _intent(moves=[("Orbe", "Marlowe"), ("Gema", "Hall")]), "doy y dejo")
@@ -189,7 +210,8 @@ def test_examining_an_item_proposes_its_puzzle_and_discovers_its_clue():
 
     outcome = apply_turn(world, _intent(examined_items=["Gema"]), "examino la gema")
 
-    assert outcome.kinds() == ["clue_discovered", "puzzle_presented"] and clue.discovered
+    assert outcome.kinds() == ["examined", "clue_discovered", "puzzle_presented"] and clue.discovered
+    assert "sin tomarlo" in outcome.render('es')
 
 
 def test_the_outcome_renders_successes_and_failures():

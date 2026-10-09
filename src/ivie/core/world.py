@@ -325,6 +325,9 @@ class World:
     self.puzzle_states = {}
     """track the state of puzzles: 'not_proposed', 'proposed', 'solved'"""
 
+    self.shown_items = set()
+    """(character name, item name) for items the player has shown to a character who asked for them"""
+
   ## Deprecated ##
   def set_objective (self, first_component: Type[Component], second_component: Type[Component]):
     

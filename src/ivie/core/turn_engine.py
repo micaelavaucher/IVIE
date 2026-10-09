@@ -71,11 +71,13 @@ def _holder_of(world, item):
 
 
 def _requirement_met(world, character, requirement) -> Optional[bool]:
-    """True/False for requirements the engine can check; None for the ones it cannot (talking, persuading)."""
+    """True/False for requirements the engine can check; None for the ones it cannot (talking, persuading).
+    An item requirement is met by giving the item or by showing it."""
     kind = str(getattr(getattr(requirement, 'requirement_type', None), 'value', getattr(requirement, 'requirement_type', ''))).lower()
     if kind == 'item':
         item = world._find_object_flexible(getattr(requirement, 'item_name', '') or '')
-        return item is not None and item in character.inventory
+        shown = getattr(world, 'shown_items', set())
+        return item is not None and (item in character.inventory or (character.name, item.name) in shown)
     if kind == 'puzzle':
         puzzle = world.puzzles.get(getattr(requirement, 'puzzle_name', '') or '')
         return puzzle is not None and world.puzzle_states.get(puzzle.name) == 'solved'
@@ -345,10 +347,44 @@ class _Turn:
         if not reachable:
             self.unavailable(item, item_name)
             return
+        # Said explicitly: with no fact the narrator dramatized "you examine the journal" as picking it up
+        if item in self.player.inventory:
+            self.outcome.add('examined', True, f"El jugador examina {item.name}, que lleva consigo",
+                             f"The player examines {item.name}, which they carry")
+        elif holder is not None:
+            self.outcome.add('examined', True, f"El jugador examina {item.name}, que sigue en manos de {holder.name}",
+                             f"The player examines {item.name}, which stays in {holder.name}'s hands")
+        else:
+            self.outcome.add('examined', True, f"El jugador examina {item.name} sin tomarlo: sigue en {location.name}",
+                             f"The player examines {item.name} without taking it: it stays in {location.name}")
         self.discover_clue(item)
         puzzle = world.find_puzzle_proposed_by_location(item.name)
         if puzzle is not None:
             self.present(puzzle)
+
+    def show(self, item_name) -> None:
+        """Showing a character the item they ask for meets their requirement, as giving it would:
+        "the requirement says show it" and players try that first."""
+        world, player = self.world, self.player
+        item = world._find_object_flexible(item_name)
+        if item is None or item not in player.inventory:
+            self.unavailable(item, item_name)
+            return
+        present = [c for c in world.characters.values() if c is not player and c.location is player.location]
+        wanting = [c for c in present
+                   for requirement in (getattr(getattr(c, 'interaction', None), 'requires', None) or [])
+                   if getattr(requirement, 'item_name', None)
+                   and world._find_object_flexible(requirement.item_name) is item]
+        if not hasattr(world, 'shown_items'):
+            world.shown_items = set()
+        for character in wanting:
+            world.shown_items.add((character.name, item.name))
+            self.outcome.add('item_shown', True,
+                             f"El jugador le muestra {item.name} a {character.name}, que es lo que pedía: el requisito queda cumplido (el jugador lo conserva)",
+                             f"The player shows {item.name} to {character.name}, which is what they asked for: the requirement is met (the player keeps it)")
+        if not wanting:
+            self.outcome.add('item_shown', True, f"El jugador muestra {item.name} (lo conserva)",
+                             f"The player shows {item.name} (they keep it)")
 
     def answer_puzzles(self) -> None:
         """A puzzle is solved when the player's own words contain its answer. The interpreter's
@@ -428,6 +464,8 @@ def apply_turn(world, intent, player_input: str) -> TurnOutcome:
         turn.examine(name)
     for name in intent.items_used:
         turn.use(name)
+    for name in intent.items_shown:
+        turn.show(name)
     turn.answer_puzzles()
     if intent.accusation:
         turn.accuse(intent.accusation)
