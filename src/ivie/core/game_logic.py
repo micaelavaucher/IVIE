@@ -13,7 +13,7 @@ from ..config import load_config
 from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured
 from ..llm.turn_prompts import prompt_interpret_action, prompt_narrate_outcome
 from .narration_check import narration_problems, snapshot
-from .turn_engine import apply_turn
+from .turn_engine import apply_turn, open_puzzles
 from .world_builder import generate_world_overview, generate_objective_validation_report
 from .world_utils import create_world_state_summary
 from ..llm.structured_data_models import WorldUpdate
@@ -547,7 +547,8 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
     # 1. Interpret: what does the player attempt?
     system_msg, user_msg, intent_model = prompt_interpret_action(
         world.render_world(language=language, reveal_answers=False), message, language, relevant_memories_text,
-        characters=[c.name for c in world.characters.values() if c is not world.player])
+        characters=[c.name for c in world.characters.values() if c is not world.player],
+        open_puzzles=[(p.name, p.problem) for p in open_puzzles(world)])
     step_started = time.perf_counter()
     try:
         response = reasoning_model.prompt_model_structured(prompt=system_msg + "\n\n" + user_msg, response_schema=intent_model)

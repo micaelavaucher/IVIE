@@ -18,7 +18,9 @@ Rules enforced here:
   uses or claims to carry that they do not have, and "I solved it" without an answer: the
   narration is written from these facts, so it must not have to guess.
 - A puzzle is presented when the player addresses its character, examines its item or tries its
-  passage, and is solved only if the player's own words contain an accepted answer.
+  passage, and is solved only when the player answers it (the interpreter reports an attempt) and
+  their own words contain an accepted answer. Naming the answer for another reason ("I examine
+  the compass" when the answer is "compass") does not solve it.
 - A mystery clue is discovered when its item is obtained or examined. Once every clue is known,
   accusing the culprit solves the mystery; before that, an accusation lacks the evidence.
 """
@@ -123,6 +125,12 @@ def _puzzle_in_scene(world, puzzle) -> bool:
         if item is not None and (item in location.items or item in world.player.inventory):
             return True
     return any(obstacle is puzzle for (_, obstacle, _) in location.blocked_locations.values())
+
+
+def open_puzzles(world) -> List[Puzzle]:
+    """Puzzles presented to the player and still unsolved, that can be answered where they are."""
+    return [p for p in world.puzzles.values()
+            if world.puzzle_states.get(p.name) == 'proposed' and _puzzle_in_scene(world, p)]
 
 
 def _find_puzzle(world, name) -> Optional[Puzzle]:
@@ -387,17 +395,22 @@ class _Turn:
                              f"The player shows {item.name} (they keep it)")
 
     def answer_puzzles(self) -> None:
-        """A puzzle is solved when the player's own words contain its answer. The interpreter's
-        copy of the answer only tells a wrong answer apart from no answer at all."""
+        """Only puzzles the player answers are judged: the interpreter reports the attempt, and the
+        player's own words decide whether it is right. The interpreter's copy of the answer only
+        tells a wrong answer apart from no answer at all.
+
+        Every open puzzle used to be checked against every sentence, so a puzzle whose answer was
+        "compass" was solved by "I examine the compass"."""
         world = self.world
+        in_scene = open_puzzles(world)
         given = {}
         for attempt in self.intent.puzzle_attempts:
             puzzle = _find_puzzle(world, attempt.puzzle_name)
+            if puzzle is None and len(in_scene) == 1:
+                puzzle = in_scene[0]  # the interpreter paraphrased the name of the only open puzzle
             if puzzle is not None:
                 given[puzzle] = (attempt.answer or "").strip()
-        in_scene = [p for p in world.puzzles.values()
-                    if world.puzzle_states.get(p.name) == 'proposed' and _puzzle_in_scene(world, p)]
-        for puzzle in list(dict.fromkeys(list(given) + in_scene)):
+        for puzzle in given:
             if world.puzzle_states.get(puzzle.name) == 'solved':
                 continue
             if puzzle.is_answered_by(self.player_input):

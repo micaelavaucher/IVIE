@@ -163,11 +163,23 @@ def test_addressing_a_character_presents_their_puzzle_and_a_later_answer_solves_
     apply_turn(world, _intent(go="Torre"), "voy a la torre")
 
     presented = apply_turn(world, _intent(characters_addressed=["Sabio"]), "hablo con el sabio")
-    solved = apply_turn(world, _intent(), "creo que es silencio")  # the model did not list the attempt
+    # the interpreter paraphrased the puzzle's name: it is the only open one, so it is that one
+    solved = apply_turn(world, _intent(puzzle_attempts=[{"puzzle_name": "el acertijo del sabio", "answer": "silencio"}]),
+                        "creo que es silencio")
 
     assert presented.kinds() == ["puzzle_presented"]
     assert solved.kinds() == ["puzzle_solved", "item_received"]
     assert _names(world.player.inventory) == ["Orbe"] and world.puzzle_states["Enigma"] == "solved"
+
+
+def test_naming_the_answer_for_another_reason_does_not_solve_the_puzzle():
+    world = _world()
+    _sabio_puzzle(world)
+    apply_turn(world, _intent(go="Torre", characters_addressed=["Sabio"]), "voy y le hablo al sabio")
+
+    outcome = apply_turn(world, _intent(examined_items=["Orbe"]), "examino el orbe en silencio")
+
+    assert "puzzle_solved" not in outcome.kinds() and world.puzzle_states["Enigma"] == "proposed"
 
 
 def test_a_wrong_answer_is_reported():
@@ -188,7 +200,8 @@ def test_a_puzzle_blocking_a_passage_opens_it_when_solved():
     hall.block_passage(torre, puzzle)
 
     tried = apply_turn(world, _intent(go="Torre"), "voy a la torre")
-    solved = apply_turn(world, _intent(go="Torre"), "digo ábrete y paso")
+    solved = apply_turn(world, _intent(go="Torre", puzzle_attempts=[{"puzzle_name": "Sello", "answer": "ábrete"}]),
+                        "digo ábrete y paso")
 
     assert tried.kinds() == ["move_refused", "puzzle_presented"]
     assert "puzzle_solved" in solved.kinds() and world.player.location.name == "Hall"  # moves happen before answers
