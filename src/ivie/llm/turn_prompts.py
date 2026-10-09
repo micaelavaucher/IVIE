@@ -4,9 +4,12 @@
    the player attempts. It does not narrate and does not decide whether anything works.
 2. core/turn_engine.apply_turn checks those attempts against the world's rules.
 3. prompt_narrate_outcome: the narrative model writes the scene from the engine's facts.
+4. prompt_extract_claims: the reasoning model lists what the narration claims (items received,
+   held or offered, passages opened...); core/narration_check.py compares that with the state, so
+   a narration that contradicts it is rewritten once before the player reads it.
 """
 
-from .structured_data_models import TurnIntent
+from .structured_data_models import NarrationClaims, TurnIntent
 
 
 def prompt_interpret_action(world_state: str, action: str, language: str = 'en', relevant_memories: str = "",
@@ -74,10 +77,19 @@ Your answer must be valid JSON following exactly the TurnIntent model. Write act
 def prompt_narrate_outcome(world_state: str, action: str, action_summary: str, facts: str,
                            previous_narrations: list, arrived: bool, first_visit: bool,
                            objective: str, objective_completed: bool, language: str = 'en',
-                           completed_before: bool = False):
+                           completed_before: bool = False, corrections: list = None):
     """objective_completed: the objective was completed in this turn, so the narration closes the
-    adventure. completed_before: it was completed in an earlier turn; the ending is not rewritten."""
+    adventure. completed_before: it was completed in an earlier turn; the ending is not rewritten.
+    corrections: what a first version of this narration got wrong (core/narration_check.py)."""
     previous = "\n\n".join(previous_narrations[-2:]) if previous_narrations else ""
+    if corrections and language == 'es':
+        correction_block = ("\n\nUNA VERSIÓN ANTERIOR DE ESTA NARRACIÓN CONTRADECÍA EL JUEGO. Escríbela de nuevo sin esto:\n"
+                            + "\n".join(f"- {c}" for c in corrections))
+    elif corrections:
+        correction_block = ("\n\nA PREVIOUS VERSION OF THIS NARRATION CONTRADICTED THE GAME. Write it again without this:\n"
+                            + "\n".join(f"- {c}" for c in corrections))
+    else:
+        correction_block = ""
     if language == 'es':
         objective_rule = (("El jugador ACABA DE CUMPLIR el objetivo: cierra la aventura con un final breve y satisfactorio, "
                           "basado solo en lo que ocurrió y en los elementos del mundo, sin acciones que el jugador no hizo ni objetos que no tiene.")
@@ -112,7 +124,7 @@ Acción del jugador: {action}
 Intención interpretada (contexto, NO son hechos): {action_summary}
 
 HECHOS DEL MOTOR:
-{facts}"""
+{facts}{correction_block}"""
     else:
         objective_rule = (("The player HAS JUST COMPLETED the objective: close the adventure with a short, satisfying ending, "
                           "based only on what happened and on the elements of the world, without actions the player did not take or items they do not have.")
@@ -147,5 +159,24 @@ Player's action: {action}
 Interpreted intent (context, NOT facts): {action_summary}
 
 ENGINE FACTS:
-{facts}"""
+{facts}{correction_block}"""
     return system_msg, user_msg
+
+
+def prompt_extract_claims(narration: str, item_names: list, language: str = 'en'):
+    """Ask what the narration claims about items, passages, answers and the objective. The model
+    does not judge the claims: the engine checks them against the state."""
+    names = ", ".join(item_names) or "-"
+    if language == 'es':
+        system_msg = """Lees la narración de un turno de un juego de ficción interactiva y extraes, sin juzgarlo, lo que AFIRMA que pasa. Llena los campos del JSON NarrationClaims solo con lo que la narración dice explícitamente. Usa los nombres exactos de la lista de objetos cuando el objeto está en ella; si no, escríbelo como lo nombra la narración. Lo que la narración niega ("no tienes linterna") no se incluye. Los muebles y el decorado del lugar no son objetos que se reciben, tienen u ofrecen."""
+        user_msg = f"""Objetos del mundo: {names}
+
+Narración:
+{narration}"""
+    else:
+        system_msg = """You read the narration of one turn of an interactive fiction game and extract, without judging it, what it CLAIMS happens. Fill the fields of the NarrationClaims JSON only with what the narration states explicitly. Use the exact names from the item list when the item is in it; otherwise write it as the narration names it. What the narration denies ("you have no lantern") is not included. Furniture and scenery are not items that are received, held or offered."""
+        user_msg = f"""Items in the world: {names}
+
+Narration:
+{narration}"""
+    return system_msg, user_msg, NarrationClaims

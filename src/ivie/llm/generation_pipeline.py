@@ -351,6 +351,14 @@ def _create_world_from_concept(concept, language, model, model_name, progress_ca
                 world_with_puzzles = None
         if world_with_puzzles is None:
             raise ValueError("Failed to generate valid puzzles while maintaining location connectivity and objective completability after multiple attempts.")
+    # The last word on playability, whatever path built the world: play it forward and open any
+    # lock whose key can only be reached behind it
+    from .solvability import ensure_solvable
+    world_with_puzzles, solvable_report, unmet = ensure_solvable(world_with_puzzles)
+    if solvable_report.total:
+        solvable_report.log("[SOLVABLE]")
+    if unmet:
+        print(f"[WARNING] The generated world cannot be completed: {unmet}")
     _log_timing("Paso 4 (puzzles)", step_started)
     _report(progress_callback, f"✅ Puzzles añadidos: {len(world_with_puzzles.puzzles)} puzzles en total (conectividad preservada)")
 

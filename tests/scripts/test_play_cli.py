@@ -22,6 +22,8 @@ class FakeReasoning:
         self.updates = list(updates)
 
     def prompt_model_structured(self, prompt, response_schema, **kwargs):
+        if response_schema.__name__ == "NarrationClaims":
+            return {}
         return self.updates.pop(0)
 
 

@@ -10,11 +10,15 @@ class Reasoner:
     """Returns one TurnIntent (as a dict) per turn and records what it was shown."""
     model_name = "fake-reasoner"
 
-    def __init__(self, intents):
+    def __init__(self, intents, claims=()):
         self.intents = list(intents)
+        self.claims = list(claims)
+        """what the narration check extracts from each narration (none by default)"""
         self.prompts = []
 
     def prompt_model_structured(self, prompt, response_schema, **kwargs):
+        if response_schema.__name__ == "NarrationClaims":
+            return self.claims.pop(0) if self.claims else {}
         self.prompts.append(prompt)
         return self.intents.pop(0)
 

@@ -47,10 +47,18 @@ def test_without_player_input_the_old_comparison_applies():
 
 
 def test_an_accepted_answer_solves_the_puzzle():
-    world = _world("El Eco Silente")
-    world.puzzles["Riddle"].accepted_answers = ["eco", "eco silente"]
+    world = _world("Eco")
+    world.puzzles["Riddle"].accepted_answers = ["resonancia", "eco silente"]
 
-    assert _attempt(world, "creo que lo que sos es el eco", model_answer="eco")
+    assert _attempt(world, "creo que lo que sos es una resonancia", model_answer="resonancia")
+
+
+def test_a_part_of_the_answer_is_not_the_answer():
+    world = _world("Torre del Reloj")
+    world.puzzles["Riddle"].accepted_answers = ["reloj", "la torre del reloj"]
+
+    assert not _attempt(world, "es un reloj de arena", model_answer="reloj")
+    assert _attempt(world, "la torre del reloj", model_answer="torre del reloj")
 
 
 def test_a_puzzle_saved_before_accepted_answers_still_works():

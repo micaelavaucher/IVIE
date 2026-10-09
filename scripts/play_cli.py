@@ -114,7 +114,7 @@ def _rag_enabled():
 
 #---- Symbolic state -------------------------------------------------------------
 
-def state_report(world, turn):
+def state_report(world, turn, language="es"):
     """The facts of the world, independent of what the narration said."""
     player = world.player
     location = player.location
@@ -137,7 +137,8 @@ def state_report(world, turn):
     objective_data = getattr(world, "objective_data", None)
     description = getattr(objective_data, "description", None) or "(sin descripción)"
     if world.objective:
-        lines.append(f"Objetivo: {description}")
+        lines.append(f"Objetivo: {world.objective_statement(language)}")
+        lines.append(f"Descripción generada del objetivo: {description}")
         target = world.objective[1]
         if target.__class__.__name__ == "MysteryObjective":
             found, total = target.get_completion_progress()
@@ -231,7 +232,7 @@ def new_session(language, theme):
     _write_json(os.path.join(session_dir, "meta.json"), meta)
     save_world(session_dir, world)
 
-    state = state_report(world, 0)
+    state = state_report(world, 0, language)
     _append_transcript(session_dir, f"# {name}\n\nTema: {theme or '(modo Generate)'} | idioma: {language} | "
                                     f"generación: {meta['generation_seconds']}s\n\n## Turno 0\n\n{narration}\n\n```\n{state}\n```\n")
     print(f"SESIÓN: {name}  (mundo generado en {meta['generation_seconds']}s)\n")
@@ -268,13 +269,14 @@ def play_turn(session_name, text, reasoning=None, narrative=None, enable_rag=Non
     elapsed = time.perf_counter() - started
 
     meta["turns"] = turn
+    completed_before = meta["completed"]
     if world.objective and world.check_objective():
         meta["completed"] = True
     _write_json(os.path.join(session_dir, "meta.json"), meta)
     save_world(session_dir, world)
 
     reply = reply.replace(r"\<", "<").replace(r"\>", ">")
-    state = state_report(world, turn)
+    state = state_report(world, turn, meta["language"])
     error_note = f"\n\nERROR DEL MOTOR:\n{engine_error}" if engine_error else ""
     _append_transcript(session_dir, f"## Turno {turn} ({elapsed:.1f}s)\n\n> {text}\n\n{reply}{error_note}\n\n```\n{state}\n```\n")
 
@@ -284,7 +286,7 @@ def play_turn(session_name, text, reasoning=None, narrative=None, enable_rag=Non
         print(engine_error.strip().splitlines()[-1])
     print(reply)
     print("\n" + state)
-    if meta["completed"]:
+    if meta["completed"] and not completed_before:
         print("\n🏁 OBJETIVO COMPLETADO")
 
 
@@ -293,7 +295,7 @@ def show_state(session_name):
     session_dir = _session_dir(session_name)
     meta = _read_json(os.path.join(session_dir, "meta.json"))
     print(f"SESIÓN: {session_name}")
-    print(state_report(load_world(session_dir), meta["turns"]))
+    print(state_report(load_world(session_dir), meta["turns"], meta["language"]))
 
 
 def reveal(session_name):

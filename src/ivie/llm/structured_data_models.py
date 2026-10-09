@@ -104,8 +104,8 @@ class GeneratedPuzzle(BaseModel):
     puzzle_type: PuzzleType = Field(description="Type of puzzle")
     descriptions: List[str] = Field(description="List of descriptive texts explaining the puzzle")
     problem: str = Field(description="Exactly what the player is told: the actual riddle, question or challenge to answer, not an instruction such as 'solve the riddle'. Must not contain the answer")
-    answer: str = Field(description="The solution to the puzzle: a single word or a very short phrase")
-    accepted_answers: List[str] = Field(default=[], description="Other ways a player may phrase the same answer: the key word alone, without articles, obvious synonyms. Short, each one a correct answer. When the answer is a sequence, a list or a number, every part is needed: never accept a part of it")
+    answer: str = Field(description="The solution to the puzzle: the shortest phrase that is still the complete answer, usually one word ('echo', not 'the silent echo')")
+    accepted_answers: List[str] = Field(default=[], description="Other complete ways to say the same answer: synonyms, with an article, a longer phrasing. Never a part of the answer: a part is a different, wrong answer")
     location: Optional[str] = Field(default=None, description="Location where puzzle is found, or None if given by character. Note: if specified, this location must exist in the world")
     proposed_by_character: Optional[str] = Field(default=None, description="Character who proposes this puzzle, or None if environmental, NONE IF REWARD IS A PASSAGE. Note: if specified, this character must exist in the world")
     proposed_by_location: Optional[str] = Field(default=None, description="Location that when investigated/examined should propose this puzzle, or None if it's given by a character.")
@@ -173,7 +173,7 @@ class ObjectiveComponent(BaseModel):
 #---- Mystery Models ---------------------------------------------------------
 class MysteryClue(BaseModel):
     name: str = Field(description="Name of the mystery clue")
-    description: str = Field(description="What the player finds by examining associated_item, told as something in or on that item and naming it. Mention only elements from the lists")
+    description: str = Field(description="What the player finds by examining associated_item: information in or on that item (an inscription, a stain, a mark, a text), naming it. Never a new object the player could take; mention only elements from the lists")
     associated_item: str = Field(description="Item that this clue is associated with. Note: this item must exist in the world")
     item_location: Optional[str] = Field(default=None, description="Location where the associated item can be found. Note: this location must exist in the world")
     relevance_to_mystery: str = Field(description="How this clue helps solve the mystery")
@@ -240,7 +240,7 @@ class PassageAttempt(BaseModel):
 
 class PuzzleAttempt(BaseModel):
     puzzle_name: str = Field(description="Exact name of the puzzle")
-    answer: str = Field(default="", description="The answer the player gives, copied word for word from what they wrote; empty if they give none (e.g. 'I solved it')")
+    answer: str = Field(default="", description="Only the words the player offers as the answer itself, copied from what they wrote ('the moon' in 'I think it is the moon'). Empty if they offer none: 'I solved it' or 'I already know the answer' are not answers")
 
 class TurnIntent(BaseModel):
     """What the player attempts in a turn, as understood by the reasoning model.
@@ -257,6 +257,19 @@ class TurnIntent(BaseModel):
     puzzle_attempts: List[PuzzleAttempt] = Field(default=[], description="Puzzles the player tries to answer, or says they solved, in this action. Do not judge whether the answer is right")
     accusation: str = Field(default="", description="If the player accuses someone or says who is responsible for the mystery: that character's exact name, or the name the player used if no character matches. Empty otherwise")
     action_summary: str = Field(description="One or two sentences: what the player does and how the characters react, according to their descriptions and interactions. Do not state whether the attempts above succeed")
+
+class NarrationClaims(BaseModel):
+    """What a narration claims about the world, extracted without judging it.
+
+    core/narration_check.py compares these claims with the engine's state before and after the
+    turn: the model only reads the text, the code decides whether it holds.
+    """
+    items_player_receives: List[str] = Field(default=[], description="Items the narration says the player receives, takes, picks up, is handed or puts in their pocket in this scene. Exact names from the list when they are in it, otherwise as the narration names them")
+    items_player_holds_or_uses: List[str] = Field(default=[], description="Items the narration says the player holds, carries, wields, uses or shows. Not items the narration says the player does NOT have")
+    items_characters_offer: List[str] = Field(default=[], description="Items a character hands to the player or offers to give them in this scene. Not items a character merely holds, wears or talks about")
+    passages_opened: List[str] = Field(default=[], description="Places the narration says a door, path or passage now opens to")
+    answer_judged: bool = Field(default=False, description="True only if the narration says that an answer the player gave is right or wrong. False if it says the player gave no answer")
+    objective_completed: bool = Field(default=False, description="True only if the narration says the adventure's main mission is accomplished or its mystery solved and the adventure is over. Solving a puzzle is not the main mission")
 
 #---- Pipeline Models (for incremental world generation) --------------------
 class WorldConcept(BaseModel):

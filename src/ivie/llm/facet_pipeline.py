@@ -30,6 +30,7 @@ from .generation_pipeline import (
 )
 from .models import get_llm
 from .name_matching import NameRoster, normalize_name
+from .solvability import ensure_solvable
 from .structured_data_models import (
     ItemReward,
     PassageReward,
@@ -111,6 +112,39 @@ def _canonicalize_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> N
         clue.associated_item = roster.canonical('item', clue.associated_item)
         clue.item_location = roster.canonical('location', clue.item_location)
     objective.mystery_culprit = roster.canonical('character', objective.mystery_culprit)
+
+
+_NUMBER_WORDS = {
+    "dos": 2, "ambos": 2, "ambas": 2, "tres": 3, "cuatro": 4, "cinco": 5, "seis": 6, "siete": 7,
+    "two": 2, "both": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+}
+_PHRASE_ENDS = {
+    "para", "y", "e", "o", "que", "en", "a", "al", "con", "hasta", "antes", "desde", "por", "sin",
+    "to", "and", "or", "that", "in", "into", "at", "with", "until", "before", "from", "for", "by", "without",
+}
+
+
+def promised_item_count(description: str, item_names) -> int:
+    """How many items a description promises ("the three fragments", "los 4 cristales"), or 0.
+
+    Only a number whose noun phrase ("three scattered fragments of the Orb") names an item counts,
+    so "between two worlds to find the Map" promises nothing: the phrase ends at a word such as
+    "to", "and" or "para". Words are compared by their first five letters, which matches plurals.
+    """
+    stems = {word[:5] for name in item_names for word in normalize_name(name).split() if len(word) >= 4}
+    words = normalize_name(description or "").split()
+    for index, word in enumerate(words):
+        count = int(word) if word.isdigit() else _NUMBER_WORDS.get(word, 0)
+        if count < 2:
+            continue
+        phrase = []
+        for following in words[index + 1:index + 7]:
+            if following in _PHRASE_ENDS:
+                break
+            phrase.append(following)
+        if any(following[:5] in stems for following in phrase):
+            return count
+    return 0
 
 
 def mentions(text: str, name: str) -> bool:
@@ -234,6 +268,14 @@ def _verify_objective(facet: WorldObjectiveFacet, roster: NameRoster) -> list:
             errors.append("A get_item objective only has item components.")
         if objective_type == 'deliver_an_item' and targets > 1:
             errors.append("A deliver_an_item objective has exactly one recipient (a character or a location).")
+        # The engine completes the objective with its components, whatever the text says: a text
+        # promising "the three fragments" over one item component ends the game with one fragment
+        items = components.get('item', [])
+        promised = promised_item_count(objective.description, roster.names('item'))
+        if promised and promised != len(items):
+            errors.append(f"The description promises {promised} items, but the objective has {len(items)} item "
+                          f"component(s): {items}. Either list {promised} different items from the list as components, "
+                          f"or rewrite the description to ask for exactly {items}.")
     return errors
 
 
@@ -464,6 +506,11 @@ def run_puzzle_stage(world, language, model, puzzle_range, max_attempts=3):
 
             _, merged = verify_puzzle_rewards_and_fix(merged)
             merged = place_unplaced_required_items(merged)
+            merged, solvable_report, unmet = ensure_solvable(merged)
+            if solvable_report.total:
+                solvable_report.log("[PUZZLES]")
+            if unmet:
+                errors.append(f"The world cannot be completed: {'; '.join(unmet)}.")
             if not verify_location_connectivity(merged):
                 errors.append("The blocked passages left some locations unreachable.")
             if not verify_objective_completability(merged):

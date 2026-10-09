@@ -200,3 +200,17 @@ def test_the_outcome_renders_successes_and_failures():
 
     assert rendered.splitlines()[0].startswith("- ✓ El jugador toma Gema")
     assert rendered.splitlines()[1].startswith("- ✗ Orbe no está al alcance")
+
+
+def test_a_door_blocked_from_both_sides_opens_from_both_sides():
+    world = _world()
+    hall, despacho = world.locations["Hall"], world.locations["Despacho"]
+    llave = world.items["Llave del Despacho"]
+    despacho.block_passage(hall, llave)  # the same door, seen from inside
+    world.characters["Marlowe"].inventory.remove(llave)
+    world.player.inventory.append(llave)
+
+    apply_turn(world, _intent(passages_to_open=[{"destination": "Despacho"}]), "abro la puerta")
+
+    assert despacho in hall.connecting_locations and hall in despacho.connecting_locations
+    assert hall.blocked_locations == {} and despacho.blocked_locations == {}

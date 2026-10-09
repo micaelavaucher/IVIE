@@ -313,7 +313,11 @@ class _Turn:
 
     def unavailable(self, item, name) -> None:
         """The player uses or mentions an item they do not have and cannot reach."""
-        if item is None:
+        if item is not None and item in self.player.location.items:
+            self.outcome.add('item_not_carried', False,
+                             f"El jugador no lleva {item.name}: está en este lugar, pero primero tiene que tomarlo",
+                             f"The player is not carrying {item.name}: it is here, but they have to take it first")
+        elif item is None:
             self.outcome.add('item_missing', False,
                              f"El jugador no tiene '{name}': no está en su inventario ni en este lugar",
                              f"The player has no '{name}': it is neither in their inventory nor here")

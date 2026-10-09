@@ -12,6 +12,7 @@ import streamlit as st
 from ..config import load_config
 from ..llm.prompts import prompt_narrate_current_scene, prompt_world_update_structured
 from ..llm.turn_prompts import prompt_interpret_action, prompt_narrate_outcome
+from .narration_check import narration_problems, snapshot
 from .turn_engine import apply_turn
 from .world_builder import generate_world_overview, generate_objective_validation_report
 from .world_utils import create_world_state_summary
@@ -31,7 +32,7 @@ def _narrate_opening_from_facts(world, language, narrative_model):
               f"El jugador lleva: {', '.join(inventory)}" if inventory else "El jugador no lleva ningún objeto",
               f"The player carries: {', '.join(inventory)}" if inventory else "The player carries no items")
     system_msg, user_msg = prompt_narrate_outcome(
-        world.render_world(language=language, reveal_answers=False),
+        world.render_world(language=language, reveal_answers=False, for_narrator=True),
         "(comienzo de la aventura)" if language == 'es' else "(start of the adventure)",
         "", facts.render(language), [], arrived=True, first_visit=True,
         objective=world.objective_statement(language) if world.objective else "",
@@ -504,6 +505,12 @@ def save_game_log(game_log_dictionary, number_of_turns, answer):
     if db_handler and world_id and current_turn_data:
         db_handler.add_turn_to_trace(world_id, number_of_turns, current_turn_data)
 
+def check_narration_enabled(config=None) -> bool:
+    """[Game] CheckNarration: check each narration against the world and rewrite it once if it contradicts it."""
+    config = config or load_config()
+    return config.getboolean('Game', 'CheckNarration', fallback=True)
+
+
 def narrate_from_outcome_enabled(config=None) -> bool:
     """[Game] NarrateFromOutcome: the engine decides each turn and the narration is written from what happened."""
     config = config or load_config()
@@ -543,21 +550,37 @@ def play_turn_from_outcome(world, message, language, reasoning_model, narrative_
     print(f"[TIMING] turno: razonador {time.perf_counter() - step_started:.1f}s")
 
     # 2. Apply: the engine decides what actually happens
+    before = snapshot(world)
     outcome = apply_turn(world, intent, message)
     just_completed = not completed_before and objective_completed(world)
     print(f"🛠️ Engine facts for '{message}':\n{outcome.render(language)}")
 
-    # 3. Narrate the facts
+    # 3. Narrate the facts, and rewrite once a narration that contradicts the world
     location = world.player.location
-    system_msg, user_msg = prompt_narrate_outcome(
-        world.render_world(language=language, reveal_answers=False), message, intent.action_summary,
-        outcome.render(language), world.player.visited_locations.get(location.name, []),
-        arrived=outcome.arrived_at is not None, first_visit=outcome.first_visit,
-        objective=world.objective_statement(language) if world.objective else "",
-        objective_completed=just_completed, language=language, completed_before=completed_before)
-    step_started = time.perf_counter()
-    narration = narrative_model.prompt_model(system_msg=system_msg, user_msg=user_msg)
-    print(f"[TIMING] turno: narrador {time.perf_counter() - step_started:.1f}s")
+
+    def narrate(corrections=None):
+        system_msg, user_msg = prompt_narrate_outcome(
+            world.render_world(language=language, reveal_answers=False, for_narrator=True), message, intent.action_summary,
+            outcome.render(language), world.player.visited_locations.get(location.name, []),
+            arrived=outcome.arrived_at is not None, first_visit=outcome.first_visit,
+            objective=world.objective_statement(language) if world.objective else "",
+            objective_completed=just_completed, language=language, completed_before=completed_before,
+            corrections=corrections)
+        step_started = time.perf_counter()
+        text = narrative_model.prompt_model(system_msg=system_msg, user_msg=user_msg)
+        print(f"[TIMING] turno: narrador {time.perf_counter() - step_started:.1f}s")
+        return text
+
+    narration = narrate()
+    if check_narration_enabled():
+        step_started = time.perf_counter()
+        problems = narration_problems(world, narration, before, outcome, objective_completed(world), language, reasoning_model)
+        print(f"[TIMING] turno: control de la narración {time.perf_counter() - step_started:.1f}s")
+        if problems:
+            print(f"🔁 Narration contradicted the world, rewriting it: {problems}")
+            log["rejected_narration"] = narration
+            log["narration_problems"] = problems
+            narration = narrate(corrections=problems)
     world.player.visited_locations.setdefault(location.name, []).append(narration)
     if outcome.arrived_at is not None:
         location.visited = True

@@ -427,3 +427,24 @@ def test_a_puzzle_that_changes_nothing_is_unplayable():
         puzzles = [puzzle]
 
     assert "changes nothing" in facet_pipeline.unplayable_puzzles(World())["R"]
+
+
+#---- The objective's text must not promise more than its components ----------------------
+
+def test_a_promised_quantity_is_found_only_next_to_an_item_name():
+    items = ["Fragmento del Orbe de Armonía", "Mapa"]
+
+    assert facet_pipeline.promised_item_count("Encuentra los tres fragmentos del Orbe", items) == 3
+    assert facet_pipeline.promised_item_count("Reassemble the 4 scattered fragments of the Orbe", items) == 4
+    assert facet_pipeline.promised_item_count("Viaja entre dos mundos para encontrar el Mapa", items) == 0
+
+
+def test_a_description_promising_more_items_than_its_components_is_rejected():
+    from src.ivie.llm.name_matching import NameRoster
+    roster = NameRoster(location=[], item=["Fragmento del Orbe"], character=["Lyra"])
+    facet = _objective_facet("deliver_an_item", [("Fragmento del Orbe", "item"), ("Lyra", "character")])
+    facet.objective.description = "Encuentra los tres fragmentos del Orbe y entrégaselos a Lyra"
+
+    errors = facet_pipeline._verify_objective(facet, roster)
+
+    assert any("promises 3 items" in e for e in errors)

@@ -153,8 +153,14 @@ class Puzzle (Component):
     """other phrasings of the answer that also solve the puzzle"""
 
   def is_answered_by(self, text: str) -> bool:
-    """Whether the text contains the answer or one of the accepted phrasings, as whole words."""
-    candidates = [self.answer] + list(getattr(self, 'accepted_answers', None) or [])
+    """Whether the text contains the answer or one of the accepted phrasings, as whole words.
+
+    A part of the answer is never an answer: "reloj" is not "Torre del Reloj", "short long" is not
+    "short-long-short-long". An accepted phrasing that is only a fragment of the answer is ignored.
+    """
+    answer = f" {World.answer_words(self.answer)} "
+    candidates = [self.answer] + [accepted for accepted in (getattr(self, 'accepted_answers', None) or [])
+                                  if f" {World.answer_words(accepted)} " not in answer]
     return any(World.answer_in_text(candidate, text) for candidate in candidates if candidate)
 
 
@@ -210,7 +216,14 @@ class Location (Component):
     """
     if location.name in self.blocked_locations and self.blocked_locations[location.name]:
       self.connecting_locations += [location]
-      if self.blocked_locations[location.name][2] and self not in location.connecting_locations:
+      obstacle, symmetric = self.blocked_locations[location.name][1], self.blocked_locations[location.name][2]
+      # The same obstacle blocking the way back is the same door seen from the other side: it opens
+      # too. A different obstacle there keeps that side closed.
+      reverse = location.blocked_locations.get(self.name)
+      if symmetric and reverse is not None and reverse[1] is obstacle:
+        del location.blocked_locations[self.name]
+        reverse = None
+      if symmetric and reverse is None and self not in location.connecting_locations:
         location.connecting_locations += [self]
       del self.blocked_locations[location.name]
       print(f"✅ Passage unblocked: {self.name} → {location.name}")
@@ -409,15 +422,18 @@ class World:
     for character in characters:
       self.add_character(character)
 
-  def render_world(self, *, language:str = 'en', detail_components:bool = True, reveal_answers:bool = True) -> str:
+  def render_world(self, *, language:str = 'en', detail_components:bool = True, reveal_answers:bool = True,
+                   for_narrator:bool = False) -> str:
     """The world as text for the language models. reveal_answers=False leaves puzzle answers out,
-    for prompts that do not judge answers (the engine checks them)."""
+    for prompts that do not judge answers (the engine checks them). for_narrator=True describes
+    characters without what they give: the narrator dramatized "gives the player X" as a hand-over
+    the engine never made."""
     rendered_world = ''
 
     if language == 'es':
-      rendered_world = self.__render_world_spanish(detail_components = detail_components, reveal_answers = reveal_answers)
+      rendered_world = self.__render_world_spanish(detail_components = detail_components, reveal_answers = reveal_answers, for_narrator = for_narrator)
     else:
-      rendered_world = self.__render_world_english(detail_components = detail_components, reveal_answers = reveal_answers)
+      rendered_world = self.__render_world_english(detail_components = detail_components, reveal_answers = reveal_answers, for_narrator = for_narrator)
 
     return rendered_world
 
@@ -505,7 +521,7 @@ class World:
 
     return formatted_state
   
-  def __render_world_spanish(self, *,  detail_components:bool = True, reveal_answers:bool = True) -> str:
+  def __render_world_spanish(self, *,  detail_components:bool = True, reveal_answers:bool = True, for_narrator:bool = False) -> str:
     player_location = self.player.location
     reachable_locations = [f"{p.name}" for p in player_location.connecting_locations]
     blocked_passages = [f"{p} bloqueado por {player_location.blocked_locations[p][1].name}" for p in player_location.blocked_locations.keys()]
@@ -568,7 +584,7 @@ class World:
             items_in_the_scene+= character.inventory
           else:
             details += "\n"
-          details += self._render_interaction(character, 'es')
+          details += self._render_interaction(character, 'es', for_narrator)
       if len(items_in_the_scene)>0:
         details+="Objetos:\n"
         for item in items_in_the_scene:
@@ -583,7 +599,7 @@ class World:
 
     return world_description + '\n' + details
 
-  def __render_world_english(self, *,  detail_components:bool = True, reveal_answers:bool = True) -> str:
+  def __render_world_english(self, *,  detail_components:bool = True, reveal_answers:bool = True, for_narrator:bool = False) -> str:
     player_location = self.player.location
     reachable_locations = [f"{p.name}" for p in player_location.connecting_locations]
     blocked_passages = [f"{p} blocked by {player_location.blocked_locations[p][1].name}" for p in player_location.blocked_locations.keys()]
@@ -634,7 +650,7 @@ class World:
             items_in_the_scene+= character.inventory
           else:
             details += "\n"
-          details += self._render_interaction(character, 'en')
+          details += self._render_interaction(character, 'en', for_narrator)
       if len(items_in_the_scene)>0:
         details+="Objects:\n"
         for item in items_in_the_scene:
@@ -906,11 +922,13 @@ class World:
         if isinstance(hint, dict):
             hint["given"] = False
 
-  def _render_interaction(self, character, language: str) -> str:
+  def _render_interaction(self, character, language: str, for_narrator: bool = False) -> str:
     """What the character gives, asks for and proposes, for the reasoning model.
 
     Without this the model only saw a character's inventory, so it improvised conditions
     ("bring me the amulet") or refused to hand over items the world says it gives freely.
+    The narrator gets the character's voice and demands, but not what they give: whether they
+    give it is an engine fact, and the narrator read "gives the player X" as permission to.
     """
     interaction = getattr(character, 'interaction', None)
     if interaction is None:
@@ -918,10 +936,13 @@ class World:
     es = language == 'es'
     parts = []
     text = getattr(interaction, 'interaction_text', None)
-    if text:
+    if text and for_narrator:
+      parts.append((f'Su forma de hablar, si el jugador le habla (decirlo no entrega nada): "{text}"' if es
+                    else f'Their way of speaking, if the player talks to them (saying it hands nothing over): "{text}"'))
+    elif text:
       parts.append((f'Al hablarle dice: "{text}"' if es else f'When spoken to, says: "{text}"'))
     gives = getattr(interaction, 'gives_item', None)
-    if gives:
+    if gives and not for_narrator:
       parts.append((f"Entrega al jugador: {gives}" if es else f"Gives the player: {gives}"))
     requires = []
     for requirement in getattr(interaction, 'requires', None) or []:
