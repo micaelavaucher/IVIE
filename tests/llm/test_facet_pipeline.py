@@ -71,6 +71,19 @@ class FakeModel:
         return CANNED[name]
 
 
+@pytest.fixture(autouse=True)
+def world_size_of_the_canned_world(tmp_path, monkeypatch):
+    """The pipeline reads config.ini from the working directory: run with a copy whose world size
+    is the canned world's, so these tests do not depend on the size configured for real games."""
+    import configparser
+    config = configparser.ConfigParser()
+    config.read("config.ini")
+    config["Size_World"] = {"locations": "4", "objects": "4", "npcs": "2", "puzzles": "1"}
+    with open(tmp_path / "config.ini", "w", encoding="utf-8") as file:
+        config.write(file)
+    monkeypatch.chdir(tmp_path)
+
+
 @pytest.fixture
 def fake_model(monkeypatch):
     model = FakeModel()

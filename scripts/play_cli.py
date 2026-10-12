@@ -15,7 +15,7 @@ Usage, from the repository root with the project's Python environment:
 
 Commands act on the latest session unless --session NAME is given.
 
-Everything is kept in playtests/<session>/ (git-ignored):
+Nothing is written to MongoDB. Everything is kept in playtests/<session>/ (git-ignored):
     generated.json   the GeneratedWorld as produced by the pipeline (to rebuild the world)
     world.json       the current World, after the last turn (jsonpickle)
     meta.json        language, theme, mode, turn count, timings
@@ -36,6 +36,11 @@ import traceback
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 os.chdir(ROOT)  # config.ini and logs/ are resolved relative to the working directory
+
+# Playtests stay out of the team's MongoDB, where the real games are kept: blank credentials make
+# the game run without a database (load_dotenv does not override variables that are already set)
+for _variable in ("MONGO_URI", "MONGO_USER", "MONGO_PASSWORD", "MONGO_CLUSTER"):
+    os.environ[_variable] = ""
 
 PLAYTESTS = os.path.join(ROOT, "playtests")
 LATEST = os.path.join(PLAYTESTS, "LATEST")
