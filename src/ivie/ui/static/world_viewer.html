@@ -49,6 +49,14 @@
   header h1 { font: 600 26px/1.2 var(--serif); margin: 0; }
   .counts { color: var(--muted); font-size: 13.5px; }
 
+  .spoiler { display: flex; align-items: flex-start; gap: 12px; background: var(--lock-soft); border: 1px solid var(--lock);
+             border-radius: 12px; padding: 12px 16px; margin: 0 0 12px; font-size: 14.5px; }
+  .spoiler[hidden] { display: none; }
+  .spoiler > div { flex: 1; }
+  .spoiler strong { color: var(--lock); }
+  .spoiler-icon { font-size: 18px; line-height: 1.3; }
+  .spoiler .reveal { white-space: nowrap; }
+
   nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; flex-wrap: wrap;
         border-bottom: 1px solid var(--line); padding: 6px 0 0; margin-bottom: 18px; }
   nav button { background: none; border: 0; border-bottom: 2.5px solid transparent; color: var(--muted);
@@ -153,6 +161,11 @@
   <h1 id="title"></h1>
   <span class="counts" id="counts"></span>
 </header>
+<div class="spoiler" id="spoiler" role="note" hidden>
+  <span class="spoiler-icon" aria-hidden="true">⚠️</span>
+  <div><strong id="spoiler-title"></strong> <span id="spoiler-text"></span></div>
+  <button type="button" class="reveal" id="spoiler-close"></button>
+</div>
 <nav id="tabs" role="tablist"></nav>
 <main id="panels"></main>
 
@@ -161,9 +174,13 @@ const WORLD = /*__WORLD__*/null;
 
 const TEXTS = {
   es: {
+    spoiler_title: "Cuidado con los spoilers.",
+    spoiler_text: "Aquí está todo el mundo generado: si estás jugando, mirar puede arruinarte la sorpresa. Las respuestas, el culpable y la solución quedan ocultos hasta que los reveles.",
+    spoiler_close: "Entendido",
     title: "Explorar el mundo", summary: "Resumen", places: "Lugares", characters: "Personajes", items: "Objetos",
     puzzles: "Acertijos", mystery: "Misterio",
-    count_places: "lugares", count_characters: "personajes", count_items: "objetos", count_puzzles: "acertijos",
+    count: { places: ["lugar", "lugares"], characters: ["personaje", "personajes"], items: ["objeto", "objetos"],
+             puzzles: ["acertijo", "acertijos"] },
     objective: "Objetivo", described: "Como lo contó el generador:", completed: "✓ Objetivo cumplido",
     opening: "Así empieza", map: "Mapa", map_hint: "Toca un lugar para ver qué hay.",
     legend_start: "⭐ donde empieza el jugador", legend_here: "📍 donde está ahora", legend_open: "── paso libre",
@@ -189,9 +206,13 @@ const TEXTS = {
     culprit: "Culpable:", how_it_happened: "Qué pasó:", player: "Jugador",
   },
   en: {
+    spoiler_title: "Spoiler warning.",
+    spoiler_text: "This is the whole generated world: if you are playing, looking here may spoil the surprise. Answers, the culprit and the solution stay hidden until you reveal them.",
+    spoiler_close: "Got it",
     title: "Explore the world", summary: "Overview", places: "Places", characters: "Characters", items: "Items",
     puzzles: "Puzzles", mystery: "Mystery",
-    count_places: "places", count_characters: "characters", count_items: "items", count_puzzles: "puzzles",
+    count: { places: ["place", "places"], characters: ["character", "characters"], items: ["item", "items"],
+             puzzles: ["puzzle", "puzzles"] },
     objective: "Objective", described: "As the generator told it:", completed: "✓ Objective completed",
     opening: "How it begins", map: "Map", map_hint: "Click a place to see what is there.",
     legend_start: "⭐ where the player starts", legend_here: "📍 where they are now", legend_open: "── open way",
@@ -588,9 +609,17 @@ function render(world) {
   if (world.theme === "dark" || world.theme === "light") document.documentElement.dataset.theme = world.theme;
   document.documentElement.lang = world.language === "es" ? "es" : "en";
   document.getElementById("title").textContent = T.title;
-  document.getElementById("counts").textContent = [
-    `${world.places.length} ${T.count_places}`, `${world.characters.length} ${T.count_characters}`,
-    `${world.items.length} ${T.count_items}`, `${world.puzzles.length} ${T.count_puzzles}`].join(" · ");
+  document.getElementById("counts").textContent = ["places", "characters", "items", "puzzles"]
+    .map(kind => `${world[kind].length} ${T.count[kind][world[kind].length === 1 ? 0 : 1]}`).join(" · ");
+
+  // The viewer is always one tab away from the game: warn before anything is seen
+  const spoiler = document.getElementById("spoiler");
+  document.getElementById("spoiler-title").textContent = T.spoiler_title;
+  document.getElementById("spoiler-text").textContent = T.spoiler_text;
+  const close = document.getElementById("spoiler-close");
+  close.textContent = T.spoiler_close;
+  close.addEventListener("click", () => { spoiler.hidden = true; });
+  spoiler.hidden = false;
 
   addTab("summary", T.summary, summaryPanel);
   addTab("places", T.places, placesPanel);
