@@ -26,6 +26,18 @@ from .structured_data_models import ItemReward, PassageReward
 
 
 @dataclass
+class Stage:
+    """What one pass of the walk added: a step in which the world opens up."""
+    reached: list = field(default_factory=list)
+    obtained: list = field(default_factory=list)
+    solved: list = field(default_factory=list)
+    opened: list = field(default_factory=list)
+
+    def __bool__(self) -> bool:
+        return bool(self.reached or self.obtained or self.solved or self.opened)
+
+
+@dataclass
 class Progress:
     reachable: set = field(default_factory=set)
     """locations the player can reach"""
@@ -35,6 +47,8 @@ class Progress:
     """puzzles the player can solve"""
     opened: set = field(default_factory=set)
     """(from, to) blocked passages the player can open"""
+    stages: list = field(default_factory=list)
+    """what each pass added, in order: the order in which the world opens up"""
 
 
 def _met(requirement, progress) -> bool:
@@ -48,11 +62,16 @@ def _met(requirement, progress) -> bool:
     return True  # talking, persuading: the engine does not check it
 
 
-def progress(world) -> Progress:
-    """Everything the player can reach, get and solve, playing the world forward to a fixpoint."""
+def progress(world, solved=()) -> Progress:
+    """Everything the player can reach, get and solve, playing the world forward to a fixpoint.
+
+    solved: puzzles already solved in a world being played. Their rewards are already in the world,
+    so they are neither solved again nor listed in the stages.
+    """
     locations = {location.name: location for location in world.locations}
     gettable = {item.name for item in world.items if item.gettable}
-    state = Progress(reachable={world.player.location}, obtainable=set(world.player.inventory))
+    state = Progress(reachable={world.player.location}, obtainable=set(world.player.inventory), solved=set(solved))
+    known = Progress(solved=set(solved))
     gates = {}  # puzzle name -> locations whose blocked passage it gates
     for location in world.locations:
         for blocked in location.blocked_passages:
@@ -62,8 +81,6 @@ def progress(world) -> Progress:
 
     changed = True
     while changed:
-        before = (len(state.reachable), len(state.obtainable), len(state.solved), len(state.opened))
-
         for name in list(state.reachable):
             location = locations.get(name)
             if location is None:
@@ -106,7 +123,12 @@ def progress(world) -> Progress:
                     if reward.from_location in state.reachable:
                         state.reachable.add(reward.to_location)
 
-        changed = before != (len(state.reachable), len(state.obtainable), len(state.solved), len(state.opened))
+        stage = Stage(reached=sorted(state.reachable - known.reachable), obtained=sorted(state.obtainable - known.obtainable),
+                      solved=sorted(state.solved - known.solved), opened=sorted(state.opened - known.opened))
+        if stage:
+            state.stages.append(stage)
+        known = Progress(set(state.reachable), set(state.obtainable), set(state.solved), set(state.opened))
+        changed = bool(stage)
     return state
 
 

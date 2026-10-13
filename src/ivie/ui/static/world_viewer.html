@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Explorar el mundo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,600;1,7..72,400&family=Recursive:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- The world viewer. ui/world_viewer.py fills WORLD with core/world_view.py's description of a world. -->
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f5f0;
+    --surface-2: #efebe2;
+    --ink: #1f1d18;
+    --muted: #6d675c;
+    --line: #e2dccf;
+    --accent: #2f6f5e;
+    --accent-soft: #dcefe7;
+    --lock: #b0542b;
+    --lock-soft: #f8e5da;
+    --puzzle: #6447b0;
+    --puzzle-soft: #ebe5f8;
+    --gold: #a77a12;
+    --shadow: 0 1px 2px rgba(31, 29, 24, .06), 0 4px 14px rgba(31, 29, 24, .05);
+    --serif: "Literata", Georgia, "Times New Roman", serif;
+    --sans: "Recursive", "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1117; --surface: #161b24; --surface-2: #1d2430; --ink: #ebe6db; --muted: #9c968a; --line: #2b3240;
+      --accent: #6cc4a4; --accent-soft: #17322b; --lock: #e58f63; --lock-soft: #3a2419;
+      --puzzle: #ab97ee; --puzzle-soft: #272040; --gold: #e0b44a; --shadow: none;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1117; --surface: #161b24; --surface-2: #1d2430; --ink: #ebe6db; --muted: #9c968a; --line: #2b3240;
+    --accent: #6cc4a4; --accent-soft: #17322b; --lock: #e58f63; --lock-soft: #3a2419;
+    --puzzle: #ab97ee; --puzzle-soft: #272040; --gold: #e0b44a; --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.55 var(--sans); padding: 4px 16px 32px; }
+  button { font: inherit; cursor: pointer; }
+
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; margin: 6px 0 14px; }
+  header h1 { font: 600 26px/1.2 var(--serif); margin: 0; }
+  .counts { color: var(--muted); font-size: 13.5px; }
+
+  nav { position: sticky; top: 0; z-index: 5; background: var(--bg); display: flex; gap: 4px; flex-wrap: wrap;
+        border-bottom: 1px solid var(--line); padding: 6px 0 0; margin-bottom: 18px; }
+  nav button { background: none; border: 0; border-bottom: 2.5px solid transparent; color: var(--muted);
+               padding: 7px 12px 9px; font-weight: 500; }
+  nav button:hover { color: var(--ink); }
+  nav button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+  .panel[hidden] { display: none; }
+
+  h2 { font: 600 19px/1.3 var(--serif); margin: 26px 0 10px; }
+  h2:first-child { margin-top: 4px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  .objective { background: var(--accent-soft); border-radius: 12px; padding: 14px 18px; }
+  .objective .label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  .objective .statement { font: 500 17px/1.45 var(--serif); margin: 4px 0 0; }
+  .objective .described { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+  .done { display: inline-block; margin-top: 8px; font-weight: 600; color: var(--accent); }
+
+  .opening { font: 16px/1.7 var(--serif); background: var(--surface); border-left: 3px solid var(--accent);
+             border-radius: 0 12px 12px 0; padding: 14px 20px; max-width: 78ch; }
+  .opening p { margin: 0 0 10px; }
+  .opening p:last-child { margin-bottom: 0; }
+
+  .map-wrap { background: var(--surface); border-radius: 14px; padding: 12px; overflow-x: auto; }
+  .map-wrap svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  .map-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .node { cursor: pointer; }
+  .node rect { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+  .node:hover rect { stroke: var(--accent); }
+  .node.start rect { stroke: var(--accent); stroke-width: 2.5; }
+  .node.here rect { fill: var(--accent-soft); }
+  .node text { fill: var(--ink); font: 600 13px var(--sans); }
+  .node text.badges { fill: var(--muted); font: 500 11.5px var(--sans); }
+  .edge { stroke: var(--muted); stroke-width: 2; fill: none; }
+  .edge.closed { stroke: var(--lock); stroke-dasharray: 6 5; }
+  .edge.closed.puzzle { stroke: var(--puzzle); }
+  .edge-label rect { fill: var(--lock-soft); stroke: var(--lock); stroke-width: 1; }
+  .edge-label.puzzle rect { fill: var(--puzzle-soft); stroke: var(--puzzle); }
+  .edge-label text { fill: var(--ink); font: 500 11.5px var(--sans); }
+
+  .reveal-path { margin-top: 22px; }
+  .big-button { background: var(--ink); color: var(--bg); border: 0; border-radius: 999px; padding: 10px 20px; font-weight: 600; }
+  .big-button:hover { opacity: .9; }
+  .stages { list-style: none; margin: 16px 0 0; padding: 0; counter-reset: stage; }
+  .stages > li { position: relative; padding: 0 0 18px 44px; }
+  .stages > li::before { counter-increment: stage; content: counter(stage); position: absolute; left: 0; top: 0;
+                         width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: var(--bg);
+                         display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+  .stages > li::after { content: ""; position: absolute; left: 13.5px; top: 30px; bottom: 2px; width: 1.5px; background: var(--line); }
+  .stages > li.goal::before { content: "🎯"; background: var(--gold); }
+  .stages > li.goal::after { display: none; }
+  .stages ul { margin: 2px 0 0; padding-left: 18px; }
+  .stages li li { margin: 2px 0; }
+  .warning { background: var(--lock-soft); border-radius: 10px; padding: 10px 14px; margin-top: 10px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .card h3 { font: 600 16.5px/1.3 var(--serif); margin: 0 0 4px; }
+  .card .desc { margin: 6px 0 10px; color: var(--muted); font-size: 14px; }
+  .card.flash { animation: flash 1.6s ease-out; }
+  @keyframes flash { 0%, 30% { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); } }
+  .badges-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+  .badge { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--surface-2); color: var(--muted); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.lock { background: var(--lock-soft); color: var(--lock); }
+  .badge.puzzle { background: var(--puzzle-soft); color: var(--puzzle); }
+  dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 14px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .chip { font-size: 13px; border-radius: 8px; padding: 1px 8px; background: var(--bg); border: 1px solid var(--line); }
+  .chip.lock { border-color: var(--lock); }
+  .chip.puzzle { border-color: var(--puzzle); }
+  .quote { font: italic 14.5px/1.55 var(--serif); border-left: 2.5px solid var(--line); padding-left: 10px; margin: 8px 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12.5px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  td { padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td:first-child { font-weight: 600; }
+  .table-wrap { overflow-x: auto; }
+
+  .problem { font: 16px/1.6 var(--serif); background: var(--bg); border-radius: 10px; padding: 10px 14px; margin: 8px 0 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .reveal { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 5px 14px; font-size: 13.5px; font-weight: 500; }
+  .reveal:hover { border-color: var(--ink); }
+  .reveal.primary { background: var(--puzzle); border-color: var(--puzzle); color: var(--bg); }
+  .answer { margin-top: 10px; background: var(--puzzle-soft); border-radius: 10px; padding: 10px 14px; }
+  .answer strong { font: 600 18px var(--serif); }
+  .hints { margin: 10px 0 0; padding-left: 20px; font-size: 14px; }
+  .empty { color: var(--muted); font-style: italic; }
+
+  @media (max-width: 560px) {
+    body { padding: 4px 12px 24px; }
+    dl { grid-template-columns: 1fr; gap: 0 0; }
+    dt { margin-top: 6px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title"></h1>
+  <span class="counts" id="counts"></span>
+</header>
+<nav id="tabs" role="tablist"></nav>
+<main id="panels"></main>
+
+<script>
+const WORLD = /*__WORLD__*/null;
+
+const TEXTS = {
+  es: {
+    title: "Explorar el mundo", summary: "Resumen", places: "Lugares", characters: "Personajes", items: "Objetos",
+    puzzles: "Acertijos", mystery: "Misterio",
+    count_places: "lugares", count_characters: "personajes", count_items: "objetos", count_puzzles: "acertijos",
+    objective: "Objetivo", described: "Como lo contó el generador:", completed: "✓ Objetivo cumplido",
+    opening: "Así empieza", map: "Mapa", map_hint: "Toca un lugar para ver qué hay.",
+    legend_start: "⭐ donde empieza el jugador", legend_here: "📍 donde está ahora", legend_open: "── paso libre",
+    legend_closed: "╌╌ paso cerrado (🔒 objeto que lo abre · 🧩 acertijo que lo abre)",
+    start: "Inicio", here: "Estás aquí", visited: "Visitado",
+    show_path: "🧭 Mostrar cómo se resuelve", hide_path: "Ocultar cómo se resuelve",
+    path_intro: "El orden en que se abre el mundo, según la misma simulación que comprueba que cada mundo generado tenga solución.",
+    path_from_here: "Desde donde está el jugador ahora:", path_empty: "No hace falta nada más.",
+    path_problem: "⚠️ Según la simulación, desde aquí el objetivo no se puede completar:",
+    exits: "Salidas", characters_here: "Personajes", items_here: "Objetos", nobody: "Nadie", nothing: "Nada",
+    opens_with: "se abre con", opens_solving: "se abre al resolver",
+    in_place: "Está en", carries: "Lleva", gives: "Da", asks: "Pide", proposes: "Propone", tells: "Cuenta", says: "Dice",
+    decorative: "Ambienta el mundo: no da ni pide nada.",
+    item: "Objeto", where: "Dónde está", can_take: "Se puede tomar", yes: "Sí", no: "No (fijo)", description: "Descripción",
+    how: "Cómo aparece", prize: "Premio", hint: "💡 Ver una pista", next_hint: "💡 Otra pista", no_more_hints: "No hay más pistas",
+    show_answer: "🔑 Revelar la respuesta", hide_answer: "Ocultar la respuesta", answer: "Respuesta:", also: "También vale:",
+    state: { not_proposed: "Sin presentar", proposed: "Presentado", solved: "✓ Resuelto" },
+    kind: { riddle: "Adivinanza", logic: "Lógica", wordplay: "Juego de palabras", observation: "Observación",
+            sequence: "Secuencia", code: "Código", memory: "Memoria" },
+    no_puzzles: "Este mundo no tiene acertijos.",
+    question: "La pregunta", clues: "Pistas", clue_in: "en", found: "✓ encontrada", not_found: "sin encontrar",
+    show_clue: "Ver qué dice", hide_clue: "Ocultar", show_culprit: "🕵️ Revelar el culpable", hide_culprit: "Ocultar el culpable",
+    culprit: "Culpable:", how_it_happened: "Qué pasó:", player: "Jugador",
+  },
+  en: {
+    title: "Explore the world", summary: "Overview", places: "Places", characters: "Characters", items: "Items",
+    puzzles: "Puzzles", mystery: "Mystery",
+    count_places: "places", count_characters: "characters", count_items: "items", count_puzzles: "puzzles",
+    objective: "Objective", described: "As the generator told it:", completed: "✓ Objective completed",
+    opening: "How it begins", map: "Map", map_hint: "Click a place to see what is there.",
+    legend_start: "⭐ where the player starts", legend_here: "📍 where they are now", legend_open: "── open way",
+    legend_closed: "╌╌ closed way (🔒 item that opens it · 🧩 puzzle that opens it)",
+    start: "Start", here: "You are here", visited: "Visited",
+    show_path: "🧭 Show how it is solved", hide_path: "Hide how it is solved",
+    path_intro: "The order in which the world opens up, from the same simulation that checks every generated world can be completed.",
+    path_from_here: "From where the player is now:", path_empty: "Nothing else is needed.",
+    path_problem: "⚠️ According to the simulation, the objective cannot be completed from here:",
+    exits: "Exits", characters_here: "Characters", items_here: "Items", nobody: "Nobody", nothing: "Nothing",
+    opens_with: "opens with", opens_solving: "opens by solving",
+    in_place: "In", carries: "Carries", gives: "Gives", asks: "Asks for", proposes: "Proposes", tells: "Tells", says: "Says",
+    decorative: "Sets the scene: gives and asks for nothing.",
+    item: "Item", where: "Where", can_take: "Can be taken", yes: "Yes", no: "No (fixed)", description: "Description",
+    how: "How it appears", prize: "Prize", hint: "💡 Show a hint", next_hint: "💡 Another hint", no_more_hints: "No more hints",
+    show_answer: "🔑 Reveal the answer", hide_answer: "Hide the answer", answer: "Answer:", also: "Also accepted:",
+    state: { not_proposed: "Not presented", proposed: "Presented", solved: "✓ Solved" },
+    kind: { riddle: "Riddle", logic: "Logic", wordplay: "Wordplay", observation: "Observation",
+            sequence: "Sequence", code: "Code", memory: "Memory" },
+    no_puzzles: "This world has no puzzles.",
+    question: "The question", clues: "Clues", clue_in: "in", found: "✓ found", not_found: "not found",
+    show_clue: "Show what it says", hide_clue: "Hide", show_culprit: "🕵️ Reveal the culprit", hide_culprit: "Hide the culprit",
+    culprit: "Culprit:", how_it_happened: "What happened:", player: "Player",
+  },
+};
+const T = TEXTS[WORLD && WORLD.language === "es" ? "es" : "en"];
+
+//---- DOM helpers ----------------------------------------------------------------------
+
+function el(tag, attrs, ...children) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (value === null || value === undefined || value === false) continue;
+    if (key === "class") node.className = value;
+    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value === true ? "" : value);
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined || child === false) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs || {})) {
+    if (value === null || value === undefined) continue;
+    if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
+    else node.setAttribute(key, value);
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child === null || child === undefined) continue;
+    node.append(child instanceof Node ? child : document.createTextNode(String(child)));
+  }
+  return node;
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/** The narration is Markdown: paragraphs, **bold** and *italics* are enough. Escaped first. */
+function narration(text) {
+  const box = el("div", { class: "opening" });
+  for (const paragraph of String(text).split(/\n\s*\n/)) {
+    if (!paragraph.trim()) continue;
+    const html = escapeHtml(paragraph.trim())
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>")
+      .replace(/\n/g, "<br>");
+    const p = document.createElement("p");
+    p.innerHTML = html;
+    box.append(p);
+  }
+  return box;
+}
+
+function list(values, empty) {
+  return values && values.length ? el("div", { class: "chips" }, values.map(v => el("span", { class: "chip" }, v)))
+                                 : el("span", { class: "empty" }, empty);
+}
+
+function definitions(rows) {
+  const dl = el("dl");
+  for (const [term, value] of rows) {
+    if (value === null || value === undefined || value === "" || (Array.isArray(value) && !value.length)) continue;
+    dl.append(el("dt", {}, term), el("dd", {}, value));
+  }
+  return dl;
+}
+
+/** A button that shows and hides what it guards. */
+function toggle(showLabel, hideLabel, content, primary) {
+  content.hidden = true;
+  const button = el("button", { class: "reveal" + (primary ? " primary" : ""), type: "button" }, showLabel);
+  button.addEventListener("click", () => {
+    content.hidden = !content.hidden;
+    button.textContent = content.hidden ? showLabel : hideLabel;
+  });
+  return [button, content];
+}
+
+//---- Tabs -----------------------------------------------------------------------------
+
+const tabs = [];
+function addTab(id, label, build) {
+  tabs.push({ id, label, build });
+}
+
+function selectTab(id) {
+  for (const button of document.querySelectorAll("nav button"))
+    button.setAttribute("aria-selected", String(button.dataset.tab === id));
+  for (const panel of document.querySelectorAll(".panel"))
+    panel.hidden = panel.id !== "panel-" + id;
+}
+
+function goToPlace(name) {
+  selectTab("places");
+  const card = document.querySelector(`[data-place="${CSS.escape(name)}"]`);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.classList.remove("flash");
+  void card.offsetWidth;
+  card.classList.add("flash");
+}
+
+//---- Map ------------------------------------------------------------------------------
+
+function wrap(text, width) {
+  const lines = [];
+  let line = "";
+  for (const word of String(text).split(/\s+/)) {
+    if (line && (line + " " + word).length > width) { lines.push(line); line = word; }
+    else line = line ? line + " " + word : word;
+  }
+  if (line) lines.push(line);
+  if (lines.length > 3) { lines.length = 3; lines[2] = lines[2].replace(/.{0,2}$/, "…"); }
+  return lines;
+}
+
+/** Places in columns by distance from the start, ordered to keep connected places level. */
+function layout(places, edges, start) {
+  const neighbours = new Map(places.map(p => [p.name, []]));
+  for (const edge of edges) {
+    if (!neighbours.has(edge.a) || !neighbours.has(edge.b)) continue;
+    neighbours.get(edge.a).push(edge.b);
+    neighbours.get(edge.b).push(edge.a);
+  }
+  const depth = new Map([[start, 0]]);
+  const queue = [start];
+  while (queue.length) {
+    const name = queue.shift();
+    for (const next of neighbours.get(name) || [])
+      if (!depth.has(next)) { depth.set(next, depth.get(name) + 1); queue.push(next); }
+  }
+  const deepest = Math.max(0, ...depth.values());
+  for (const place of places) if (!depth.has(place.name)) depth.set(place.name, deepest + 1);
+
+  const columns = [];
+  for (const place of places) (columns[depth.get(place.name)] ||= []).push(place.name);
+  const filled = columns.filter(Boolean);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let c = 1; c < filled.length; c++) {
+      const previous = filled[c - 1];
+      const score = name => {
+        const linked = (neighbours.get(name) || []).map(n => previous.indexOf(n)).filter(i => i >= 0);
+        return linked.length ? linked.reduce((a, b) => a + b, 0) / linked.length : previous.length;
+      };
+      filled[c].sort((a, b) => score(a) - score(b));
+    }
+  }
+  return filled;
+}
+
+function drawMap(world) {
+  const W = 184, COLUMN_GAP = 190, ROW_GAP = 34, PAD = 24;
+  const byName = new Map(world.places.map(p => [p.name, p]));
+  const columns = layout(world.places, world.edges, world.start);
+
+  const boxes = new Map();
+  const heights = columns.map(column => column.reduce((sum, name) => {
+    const lines = wrap(name, 21);
+    boxes.set(name, { lines, h: 30 + lines.length * 16 });
+    return sum + boxes.get(name).h;
+  }, 0) + ROW_GAP * (column.length - 1));
+  const tallest = Math.max(...heights);
+  columns.forEach((column, c) => {
+    let y = PAD + (tallest - heights[c]) / 2;
+    for (const name of column) {
+      const box = boxes.get(name);
+      Object.assign(box, { x: PAD + c * (W + COLUMN_GAP), y, w: W });
+      y += box.h + ROW_GAP;
+    }
+  });
+  const width = PAD * 2 + columns.length * W + (columns.length - 1) * COLUMN_GAP;
+  const height = PAD * 2 + tallest;
+
+  const centre = b => [b.x + b.w / 2, b.y + b.h / 2];
+  /** Where the line from the box's centre towards (tx, ty) leaves the box. */
+  const border = (b, tx, ty) => {
+    const [cx, cy] = centre(b);
+    const dx = tx - cx, dy = ty - cy;
+    const scale = Math.min(Math.abs(dx) > 0 ? (b.w / 2 + 4) / Math.abs(dx) : Infinity,
+                           Math.abs(dy) > 0 ? (b.h / 2 + 4) / Math.abs(dy) : Infinity);
+    return [cx + dx * scale, cy + dy * scale];
+  };
+
+  const root = svg("svg", { viewBox: `0 0 ${width} ${height}`, width, height, role: "img", "aria-label": T.map });
+  const labels = [];
+  for (const edge of world.edges) {
+    const a = boxes.get(edge.a), b = boxes.get(edge.b);
+    if (!a || !b) continue;
+    const [bx, by] = centre(b), [ax, ay] = centre(a);
+    const [x1, y1] = border(a, bx, by), [x2, y2] = border(b, ax, ay);
+    const kind = edge.blocked_kind === "puzzle" ? " puzzle" : "";
+    root.append(svg("line", { x1, y1, x2, y2, class: "edge" + (edge.blocked_by ? " closed" + kind : "") }));
+    if (edge.blocked_by) {
+      const lines = wrap((edge.blocked_kind === "puzzle" ? "🧩 " : "🔒 ") + edge.blocked_by, 22).slice(0, 2);
+      const w = Math.min(Math.max(...lines.map(l => l.length)) * 6.4 + 18, COLUMN_GAP - 12);
+      const h = 8 + lines.length * 14;
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+      labels.push(svg("g", { class: "edge-label" + kind },
+        svg("title", {}, `${edge.blocked_kind === "puzzle" ? T.opens_solving : T.opens_with} ${edge.blocked_by}`),
+        svg("rect", { x: mx - w / 2, y: my - h / 2, width: w, height: h, rx: 9 }),
+        lines.map((line, i) => svg("text", { x: mx, y: my - h / 2 + 15 + i * 14, "text-anchor": "middle" }, line))));
+    }
+  }
+  for (const [name, box] of boxes) {
+    const place = byName.get(name);
+    const badges = [place.start ? "⭐" : "", place.here ? "📍" : "",
+                    place.characters.length ? `👤${place.characters.length}` : "",
+                    place.items.length ? `📦${place.items.length}` : ""].filter(Boolean).join("  ");
+    const node = svg("g", { class: "node" + (place.start ? " start" : "") + (place.here ? " here" : ""),
+                            tabindex: 0, role: "button", onclick: () => goToPlace(name),
+                            onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); goToPlace(name); } } },
+      svg("title", {}, name),
+      svg("rect", { x: box.x, y: box.y, width: box.w, height: box.h, rx: 12 }),
+      box.lines.map((line, i) => svg("text", { x: box.x + box.w / 2, y: box.y + (badges ? 20 : 27) + i * 16, "text-anchor": "middle" }, line)),
+      svg("text", { class: "badges", x: box.x + box.w / 2, y: box.y + box.h - 9, "text-anchor": "middle" }, badges));
+    root.append(node);
+  }
+  root.append(...labels);
+
+  return el("div", {},
+    el("div", { class: "map-wrap" }, root),
+    el("div", { class: "map-legend" }, el("span", {}, T.legend_start), el("span", {}, T.legend_here),
+       el("span", {}, T.legend_open), el("span", {}, T.legend_closed)),
+    el("p", { class: "muted small" }, T.map_hint));
+}
+
+//---- Panels ---------------------------------------------------------------------------
+
+function summaryPanel(world) {
+  const objective = el("div", { class: "objective" },
+    el("div", { class: "label" }, T.objective),
+    el("p", { class: "statement" }, world.objective || "—"),
+    world.objective_description && world.objective_description !== world.objective
+      ? el("p", { class: "described" }, T.described + " " + world.objective_description) : null,
+    world.completed ? el("span", { class: "done" }, T.completed) : null);
+
+  const stages = el("ol", { class: "stages" });
+  world.path.forEach(stage => stages.append(el("li", {}, el("ul", {}, stage.map(s => el("li", {}, s))))));
+  if (world.path_ends) stages.append(el("li", { class: "goal" }, el("strong", {}, world.path_ends)));
+  const path = el("div", {},
+    el("p", { class: "muted small" }, T.path_intro),
+    world.here !== world.start ? el("p", { class: "small" }, T.path_from_here) : null,
+    world.path.length || world.path_ends ? stages : el("p", { class: "empty" }, T.path_empty),
+    world.path_problems.length ? el("div", { class: "warning" }, el("strong", {}, T.path_problem),
+      el("ul", {}, world.path_problems.map(p => el("li", {}, p)))) : null);
+  const [button, content] = toggle(T.show_path, T.hide_path, path);
+  button.className = "big-button";
+
+  return [
+    objective,
+    world.opening ? [el("h2", {}, T.opening), narration(world.opening)] : null,
+    el("h2", {}, T.map), drawMap(world),
+    el("div", { class: "reveal-path" }, button, content),
+  ];
+}
+
+function exitChip(exit) {
+  if (!exit.blocked_by) return el("span", { class: "chip" }, "→ " + exit.destination);
+  const puzzle = exit.blocked_kind === "puzzle";
+  return el("span", { class: "chip " + (puzzle ? "puzzle" : "lock") },
+    `${puzzle ? "🧩" : "🔒"} ${exit.destination} · ${puzzle ? T.opens_solving : T.opens_with} ${exit.blocked_by}`);
+}
+
+function placesPanel(world) {
+  return el("div", { class: "grid" }, world.places.map(place => el("article", { class: "card", "data-place": place.name },
+    el("h3", {}, place.name),
+    el("div", { class: "badges-row" },
+      place.start ? el("span", { class: "badge accent" }, "⭐ " + T.start) : null,
+      place.here ? el("span", { class: "badge accent" }, "📍 " + T.here) : null,
+      place.visited && !place.start ? el("span", { class: "badge" }, T.visited) : null),
+    place.description ? el("p", { class: "desc" }, place.description) : null,
+    definitions([
+      [T.exits, place.exits.length ? el("div", { class: "chips" }, place.exits.map(exitChip)) : el("span", { class: "empty" }, T.nothing)],
+      [T.characters_here, list(place.characters, T.nobody)],
+      [T.items_here, list(place.items, T.nothing)],
+    ]))));
+}
+
+function charactersPanel(world) {
+  if (!world.characters.length) return el("p", { class: "empty" }, T.nobody);
+  return el("div", { class: "grid" }, world.characters.map(character => {
+    const plays = character.gives || character.asks.length || character.proposes || character.tells;
+    return el("article", { class: "card" },
+      el("h3", {}, character.name),
+      el("div", { class: "badges-row" }, el("span", { class: "badge" }, "📍 " + character.place),
+        character.proposes ? el("span", { class: "badge puzzle" }, "🧩 " + T.proposes) : null),
+      character.description ? el("p", { class: "desc" }, character.description) : null,
+      character.says ? el("p", { class: "quote" }, `${T.says}: «${character.says}»`) : null,
+      definitions([
+        [T.carries, character.carries.length ? list(character.carries) : null],
+        [T.gives, character.gives],
+        [T.asks, character.asks.length ? el("div", {}, character.asks.map(a => el("div", {}, a))) : null],
+        [T.proposes, character.proposes ? "«" + character.proposes + "»" : null],
+        [T.tells, character.tells],
+      ]),
+      plays ? null : el("p", { class: "empty small" }, T.decorative));
+  }));
+}
+
+function itemsPanel(world) {
+  if (!world.items.length) return el("p", { class: "empty" }, T.nothing);
+  return el("div", { class: "table-wrap" }, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, T.item), el("th", {}, T.where), el("th", {}, T.can_take), el("th", {}, T.description))),
+    el("tbody", {}, world.items.map(item => el("tr", {},
+      el("td", {}, item.name), el("td", {}, item.where), el("td", {}, item.gettable ? T.yes : T.no),
+      el("td", { class: "muted" }, item.description))))));
+}
+
+function puzzleCard(puzzle) {
+  const answer = el("div", { class: "answer" },
+    el("div", {}, T.answer + " ", el("strong", {}, puzzle.answer)),
+    puzzle.also_accepted.length ? el("div", { class: "small muted" }, T.also + " " + puzzle.also_accepted.join(" · ")) : null);
+  const hints = el("ol", { class: "hints" });
+  hints.hidden = true;
+  let shown = 0;
+  const hintButton = puzzle.hints.length ? el("button", { class: "reveal", type: "button" }, T.hint) : null;
+  if (hintButton) hintButton.addEventListener("click", () => {
+    hints.hidden = false;
+    hints.append(el("li", {}, puzzle.hints[shown++]));
+    hintButton.textContent = shown < puzzle.hints.length ? T.next_hint : T.no_more_hints;
+    hintButton.disabled = shown >= puzzle.hints.length;
+  });
+  const [answerButton] = toggle(T.show_answer, T.hide_answer, answer, true);
+  const stateClass = puzzle.state === "solved" ? "badge accent" : "badge";
+  return el("article", { class: "card" },
+    el("h3", {}, puzzle.name),
+    el("div", { class: "badges-row" }, el("span", { class: stateClass }, T.state[puzzle.state] || puzzle.state),
+      puzzle.kind ? el("span", { class: "badge puzzle" }, T.kind[puzzle.kind] || puzzle.kind) : null),
+    el("div", { class: "problem" }, puzzle.problem),
+    definitions([
+      [T.how, el("div", {}, puzzle.presented.map(way => el("div", {}, way)))],
+      [T.prize, puzzle.rewards.length ? el("div", {}, puzzle.rewards.map(r => el("div", {}, r))) : null],
+    ]),
+    hints,
+    el("div", { class: "actions" }, hintButton, answerButton),
+    answer);
+}
+
+function mysteryCard(mystery) {
+  const solution = el("div", { class: "answer" },
+    el("div", {}, T.culprit + " ", el("strong", {}, mystery.culprit || "—")),
+    mystery.solution ? el("p", { class: "small", style: "margin:6px 0 0" }, T.how_it_happened + " " + mystery.solution) : null);
+  const [culpritButton] = toggle(T.show_culprit, T.hide_culprit, solution, true);
+  const clues = el("ul", { style: "margin:4px 0 0; padding-left:18px" }, mystery.clues.map(clue => {
+    const [button, said] = toggle(T.show_clue, T.hide_clue, el("div", { class: "quote" }, clue.description));
+    button.classList.add("small");
+    return el("li", { style: "margin-bottom:8px" },
+      el("strong", {}, clue.name), ` — ${clue.item} (${clue.where}) `,
+      el("span", { class: clue.discovered ? "badge accent" : "badge" }, clue.discovered ? T.found : T.not_found), " ",
+      button, said);
+  }));
+  return el("article", { class: "card", style: "grid-column: 1 / -1" },
+    el("h3", {}, "🕵️ " + T.mystery),
+    el("div", { class: "problem" }, mystery.question),
+    el("div", { class: "small muted" }, T.clues), clues,
+    el("div", { class: "actions" }, culpritButton), solution);
+}
+
+function puzzlesPanel(world) {
+  const cards = world.puzzles.map(puzzleCard);
+  if (world.mystery) cards.unshift(mysteryCard(world.mystery));
+  return cards.length ? el("div", { class: "grid" }, cards) : el("p", { class: "empty" }, T.no_puzzles);
+}
+
+//---- Page -----------------------------------------------------------------------------
+
+function render(world) {
+  if (world.theme === "dark" || world.theme === "light") document.documentElement.dataset.theme = world.theme;
+  document.documentElement.lang = world.language === "es" ? "es" : "en";
+  document.getElementById("title").textContent = T.title;
+  document.getElementById("counts").textContent = [
+    `${world.places.length} ${T.count_places}`, `${world.characters.length} ${T.count_characters}`,
+    `${world.items.length} ${T.count_items}`, `${world.puzzles.length} ${T.count_puzzles}`].join(" · ");
+
+  addTab("summary", T.summary, summaryPanel);
+  addTab("places", T.places, placesPanel);
+  addTab("characters", T.characters, charactersPanel);
+  addTab("items", T.items, itemsPanel);
+  addTab("puzzles", world.mystery ? `${T.puzzles} · ${T.mystery}` : T.puzzles, puzzlesPanel);
+
+  const nav = document.getElementById("tabs"), panels = document.getElementById("panels");
+  for (const tab of tabs) {
+    nav.append(el("button", { type: "button", role: "tab", "data-tab": tab.id, onclick: () => selectTab(tab.id) }, tab.label));
+    panels.append(el("section", { class: "panel", id: "panel-" + tab.id, role: "tabpanel" }, tab.build(world)));
+  }
+  const asked = location.hash.slice(1);
+  selectTab(tabs.some(tab => tab.id === asked) ? asked : "summary");
+}
+
+if (WORLD) render(WORLD);
+</script>
+</body>
+</html>

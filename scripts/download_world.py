@@ -11,6 +11,7 @@ Read-only: it never writes to the database. Run from the repo root:
     trace.json   the document as stored (every turn, symbolic states included)
     report.md    the world with its solutions, why each puzzle was or was not presented, and the
                  turns (what the player wrote, the engine's facts, the narration)
+    mundo.html   the world viewer for the world as generated: open it in a browser
 """
 
 import argparse
@@ -60,27 +61,8 @@ def _name(value):
     return getattr(value, "name", value)
 
 
-def _puzzle_access(world, puzzle) -> str:
-    """How the player gets the puzzle presented, in this world."""
-    ways = []
-    if puzzle.proposed_by_character:
-        character = world.characters.get(puzzle.proposed_by_character)
-        where = _name(character.location) if character else "?"
-        ways.append(f"hablarle a {puzzle.proposed_by_character} (está en '{where}')")
-    if puzzle.proposed_by_location:
-        item = world._find_object_flexible(puzzle.proposed_by_location)
-        holder = next((c.name for c in world.characters.values() if item is not None and item in c.inventory), None)
-        lying = next((l.name for l in world.locations.values() if item is not None and item in l.items), None)
-        where = f"lo tiene {holder}" if holder else f"está en '{lying}'" if lying else "no está en ningún lado"
-        ways.append(f"examinar el objeto '{puzzle.proposed_by_location}' ({where})")
-    for location in world.locations.values():
-        for destination, (_, obstacle, _) in location.blocked_locations.items():
-            if obstacle is puzzle:
-                ways.append(f"intentar pasar de '{location.name}' a '{destination}'")
-    return "; ".join(ways) or "NADIE LO PRESENTA (no hay personaje, objeto ni pasaje)"
-
-
 def world_report(world, final_world) -> list:
+    from src.ivie.core.world_view import puzzle_access
     lines = [f"Jugador: {world.player.name}, empieza en '{_name(world.player.location)}'"]
     if world.objective:
         lines.append(f"Objetivo (lo que comprueba el motor): {world.objective_statement('es')}")
@@ -120,7 +102,7 @@ def world_report(world, final_world) -> list:
         lines.append(f"- **{puzzle.name}**: \"{puzzle.problem}\"")
         lines.append(f"  - respuesta: {puzzle.answer} (también: {getattr(puzzle, 'accepted_answers', [])})")
         lines.append(f"  - recompensa: {rewards}")
-        lines.append(f"  - se presenta al: {_puzzle_access(world, puzzle)}")
+        lines.append(f"  - se presenta: {'; '.join(puzzle_access(world, puzzle, 'es'))}")
         lines.append(f"  - estado al final: {final_states.get(puzzle.name, '?')}")
     if not world.puzzles:
         lines.append("(el mundo no tiene acertijos)")
@@ -168,7 +150,12 @@ def get_game(world_id):
     lines += turns_report(trace)
     with open(os.path.join(folder, "report.md"), "w", encoding="utf-8") as file:
         file.write("\n".join(lines) + "\n")
-    print(f"Partida {world_id} guardada en {folder}/ (report.md y trace.json)")
+    if world is not None:
+        from src.ivie.core.world_view import world_view
+        from src.ivie.ui.world_viewer import world_viewer_html
+        with open(os.path.join(folder, "mundo.html"), "w", encoding="utf-8") as file:
+            file.write(world_viewer_html(world_view(world, trace.get("language") or "es")))
+    print(f"Partida {world_id} guardada en {folder}/ (report.md, mundo.html y trace.json)")
 
 
 def main():

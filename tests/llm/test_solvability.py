@@ -82,3 +82,24 @@ def test_a_mystery_clue_only_needs_its_item_in_view():
 
     assert unmet_goals(_world(keeper_at="Exterior", objective=mystery)) == []
     assert unmet_goals(_world(keeper_at="Interior", objective=mystery)) == ["the clue item 'Logbook' can never be reached"]
+
+
+def test_the_stages_follow_the_order_in_which_the_world_opens_up():
+    state = progress(_world(keeper_at="Exterior"))
+
+    first, second, third = state.stages[:3]
+    assert first.reached == ["Exterior", "Path"] and first.obtained == ["Key"]
+    assert second.opened == [("Exterior", "Interior")] and second.reached == ["Interior"]
+    assert "Study" in third.reached
+    assert not state.stages[-1].solved and state.stages[-1].obtained == ["Logbook"]
+
+
+def test_a_puzzle_already_solved_is_neither_solved_again_nor_staged():
+    riddle = {"name": "Riddle", "puzzle_type": "riddle", "descriptions": ["d"], "problem": "¿Qué tiene agujas?",
+              "answer": "reloj", "proposed_by_character": "Keeper", "relevance_to_objective": "r", "hint": "h",
+              "rewards": [{"reward_type": "item", "description": "d", "item_name": "Key"}]}
+
+    state = progress(_world(keeper_at="Exterior", puzzles=[riddle]), solved={"Riddle"})
+
+    assert "Key" in state.obtainable
+    assert all("Riddle" not in stage.solved for stage in state.stages)

@@ -5,6 +5,7 @@ replacing the Gradio interface with enhanced UI and functionality.
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import os
 import time
 import json
@@ -16,231 +17,6 @@ from ..llm.generation_pipeline import create_world_incrementally, create_world_i
 from ..core.world_builder import create_world_from_llm_response
 from .ui_components import get_ui_texts, get_progress_messages
 import examples.example_worlds as example_worlds
-
-def render_mermaid(mermaid_code: str, height: int = 600):
-    """Render a Mermaid diagram using Mermaid.js from CDN with zoom controls.
-    
-    Args:
-        mermaid_code: The Mermaid diagram code
-        height: Height of the rendered diagram in pixels
-    """
-    # Simple test to verify rendering works
-    html_code = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <script type="module">
-            import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-            
-            window.addEventListener('load', async () => {{
-                mermaid.initialize({{ 
-                    startOnLoad: false,
-                    theme: 'default',
-                    flowchart: {{
-                        useMaxWidth: false,
-                        htmlLabels: true,
-                        curve: 'basis'
-                    }},
-                    securityLevel: 'loose'
-                }});
-                
-                try {{
-                    const {{svg}} = await mermaid.render('mermaid-svg', document.getElementById('diagram-code').textContent);
-                    document.getElementById('diagram-output').innerHTML = svg;
-                    console.log('Mermaid rendered successfully');
-                }} catch(e) {{
-                    console.error('Mermaid error:', e);
-                    document.getElementById('diagram-output').innerHTML = '<pre style="color:red;">Error: ' + e.message + '</pre>';
-                }}
-            }});
-        </script>
-        <style>
-            body {{
-                margin: 0;
-                padding: 0;
-                overflow: hidden;
-                background-color: #ffffff;
-                font-family: 'Arial', sans-serif;
-            }}
-            
-            #zoom-controls {{
-                position: fixed;
-                top: 10px;
-                right: 10px;
-                z-index: 1000;
-                background: white;
-                padding: 10px;
-                border-radius: 8px;
-                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-                display: flex;
-                gap: 5px;
-            }}
-            
-            .zoom-btn {{
-                background: #4CAF50;
-                color: white;
-                border: none;
-                padding: 8px 12px;
-                border-radius: 4px;
-                cursor: pointer;
-                font-size: 16px;
-                font-weight: bold;
-                transition: background 0.3s;
-            }}
-            
-            .zoom-btn:hover {{
-                background: #45a049;
-            }}
-            
-            .zoom-btn:active {{
-                background: #3d8b40;
-            }}
-            
-            #zoom-reset {{
-                background: #2196F3;
-            }}
-            
-            #zoom-reset:hover {{
-                background: #0b7dda;
-            }}
-            
-            #zoom-level {{
-                background: #f0f0f0;
-                color: #333;
-                padding: 8px 12px;
-                border-radius: 4px;
-                font-size: 14px;
-                font-weight: bold;
-                min-width: 60px;
-                text-align: center;
-            }}
-            
-            #diagram-container {{
-                width: 100%;
-                height: {height}px;
-                overflow: auto;
-                cursor: grab;
-                position: relative;
-                background-color: #f9f9f9;
-            }}
-            
-            #diagram-container:active {{
-                cursor: grabbing;
-            }}
-            
-            #diagram-wrapper {{
-                display: inline-block;
-                transform-origin: top left;
-                transition: transform 0.2s ease;
-                padding: 20px;
-            }}
-            
-            .mermaid {{
-                font-family: 'Arial', sans-serif;
-                background-color: white;
-                padding: 10px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div id="zoom-controls">
-            <button class="zoom-btn" id="zoom-out" title="Zoom Out">−</button>
-            <div id="zoom-level">100%</div>
-            <button class="zoom-btn" id="zoom-in" title="Zoom In">+</button>
-            <button class="zoom-btn" id="zoom-reset" title="Reset Zoom">⟲</button>
-        </div>
-        
-        <div id="diagram-container">
-            <div id="diagram-wrapper">
-                <pre id="diagram-code" style="display:none;">{mermaid_code}</pre>
-                <div id="diagram-output"></div>
-            </div>
-        </div>
-        
-        <script>
-            let scale = 1.0;
-            const minScale = 0.3;
-            const maxScale = 3.0;
-            const scaleStep = 0.1;
-            
-            const wrapper = document.getElementById('diagram-wrapper');
-            const container = document.getElementById('diagram-container');
-            const zoomLevel = document.getElementById('zoom-level');
-            
-            function updateZoom() {{
-                wrapper.style.transform = `scale(${{scale}})`;
-                zoomLevel.textContent = Math.round(scale * 100) + '%';
-            }}
-            
-            document.getElementById('zoom-in').addEventListener('click', () => {{
-                if (scale < maxScale) {{
-                    scale = Math.min(scale + scaleStep, maxScale);
-                    updateZoom();
-                }}
-            }});
-            
-            document.getElementById('zoom-out').addEventListener('click', () => {{
-                if (scale > minScale) {{
-                    scale = Math.max(scale - scaleStep, minScale);
-                    updateZoom();
-                }}
-            }});
-            
-            document.getElementById('zoom-reset').addEventListener('click', () => {{
-                scale = 1.0;
-                updateZoom();
-                container.scrollTop = 0;
-                container.scrollLeft = 0;
-            }});
-            
-            // Mouse wheel zoom
-            container.addEventListener('wheel', (e) => {{
-                e.preventDefault();
-                const delta = e.deltaY > 0 ? -scaleStep : scaleStep;
-                const newScale = Math.max(minScale, Math.min(maxScale, scale + delta));
-                
-                if (newScale !== scale) {{
-                    scale = newScale;
-                    updateZoom();
-                }}
-            }});
-            
-            // Pan functionality
-            let isPanning = false;
-            let startX, startY, scrollLeft, scrollTop;
-            
-            container.addEventListener('mousedown', (e) => {{
-                isPanning = true;
-                startX = e.pageX - container.offsetLeft;
-                startY = e.pageY - container.offsetTop;
-                scrollLeft = container.scrollLeft;
-                scrollTop = container.scrollTop;
-            }});
-            
-            container.addEventListener('mouseleave', () => {{
-                isPanning = false;
-            }});
-            
-            container.addEventListener('mouseup', () => {{
-                isPanning = false;
-            }});
-            
-            container.addEventListener('mousemove', (e) => {{
-                if (!isPanning) return;
-                e.preventDefault();
-                const x = e.pageX - container.offsetLeft;
-                const y = e.pageY - container.offsetTop;
-                const walkX = (x - startX) * 2;
-                const walkY = (y - startY) * 2;
-                container.scrollLeft = scrollLeft - walkX;
-                container.scrollTop = scrollTop - walkY;
-            }});
-        </script>
-    </body>
-    </html>
-    """
-    st.components.v1.html(html_code, height=height, scrolling=True)
 
 def initialize_session_state():
     """Initialize Streamlit session state variables."""
@@ -764,9 +540,7 @@ def load_world_for_inspection(world_id: str):
             st.code(traceback.format_exc())
 
 def render_world_inspection(world):
-    """Render the world inspection view with diagram and details."""
-    from ..core.world_visualizer import generate_world_mermaid_diagram, generate_world_text_summary
-    
+    """Render the world inspection view: the world viewer, and buttons to play it or go back."""
     st.markdown("# 🔍 World Inspector")
     
     if st.session_state.language == 'es':
@@ -811,84 +585,7 @@ def render_world_inspection(world):
         pass  # Spacer
     
     st.markdown("---")
-    
-    # Tabs for different views
-    tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🎯 Valid Objective", "📊 Diagram", "📝 Details"])
-    
-    with tab1:
-        # Generate and display world overview
-        try:
-            from ..core.world_builder import generate_world_overview
-            overview = generate_world_overview(world, st.session_state.language)
-            st.markdown(overview)
-        except Exception as e:
-            st.error(f"❌ Error generating overview: {str(e)}")
-            if st.session_state.debug_mode:
-                import traceback
-                st.code(traceback.format_exc())
-    
-    with tab2:
-        # Generate and display objective validation
-        try:
-            from ..core.world_builder import generate_objective_validation_report
-            validation_report = generate_objective_validation_report(world, st.session_state.language)
-            st.markdown(validation_report)
-        except Exception as e:
-            st.error(f"❌ Error generating objective validation: {str(e)}")
-            if st.session_state.debug_mode:
-                import traceback
-                st.code(traceback.format_exc())
-    
-    with tab3:
-        if st.session_state.language == 'es':
-            st.markdown("""
-            **Leyenda:**
-            - 🟢 Ubicación inicial del jugador
-            - 🔵 Ubicaciones normales
-            - ➖➖ Pasaje bloqueado (con 🔒 y el elemento que bloquea)
-            - 📦 Objeto (se puede tomar)
-            - 🚫 Objeto decorativo (no se puede tomar)
-            - 👤 Personaje
-            - 🧩 Puzzle
-            """)
-        else:
-            st.markdown("""
-            **Legend:**
-            - 🟢 Player starting location
-            - 🔵 Normal locations
-            - ➖➖ Blocked passage (with 🔒 and blocking element)
-            - 📦 Item (can be taken)
-            - 🚫 Decorative item (cannot be taken)
-            - 👤 Character
-            - 🧩 Puzzle
-            """)
-        
-        # Generate and display Mermaid diagram
-        try:
-            mermaid_code = generate_world_mermaid_diagram(world, st.session_state.language)
-            
-            # Debug: show the code if in debug mode
-            if st.session_state.debug_mode:
-                with st.expander("🔍 Ver código Mermaid" if st.session_state.language == 'es' else "🔍 View Mermaid code"):
-                    st.code(mermaid_code, language="mermaid")
-            
-            render_mermaid(mermaid_code, height=800)
-        except Exception as e:
-            st.error(f"❌ Error generating diagram: {str(e)}")
-            if st.session_state.debug_mode:
-                import traceback
-                st.code(traceback.format_exc())
-    
-    with tab4:
-        # Generate and display text summary
-        try:
-            text_summary = generate_world_text_summary(world, st.session_state.language)
-            st.markdown(text_summary)
-        except Exception as e:
-            st.error(f"❌ Error generating summary: {str(e)}")
-            if st.session_state.debug_mode:
-                import traceback
-                st.code(traceback.format_exc())
+    render_world_viewer(world)
 
 def load_replay_world(world_id: str):
     """Load a world from MongoDB trace."""
@@ -1132,7 +829,39 @@ def load_tutorial_world():
     except Exception as e:
         st.error(f"❌ Error loading tutorial world: {str(e)}")
 
+WORLD_VIEWER_HEIGHT = 860
+
+
+def render_world_viewer(world, opening: str = ""):
+    """The world viewer (core/world_view.py drawn by ui/world_viewer.py) for the world as it stands."""
+    from ..core.world_view import world_view
+    from .world_viewer import world_viewer_html
+    try:
+        theme = getattr(getattr(st.context, 'theme', None), 'type', None) or ""
+        view = world_view(world, st.session_state.language, opening=opening, theme=theme)
+        components.html(world_viewer_html(view), height=WORLD_VIEWER_HEIGHT, scrolling=True)
+    except Exception as e:
+        # The viewer must never take the game down with it
+        st.error(f"❌ {'No se pudo mostrar el mundo' if st.session_state.language == 'es' else 'Could not show the world'}: {e}")
+        if st.session_state.debug_mode:
+            import traceback
+            st.code(traceback.format_exc())
+
+
 def render_chat_interface():
+    """The game: the chat in one tab and the world viewer in the other, always at hand, for whoever
+    wants to see what was generated without playing it."""
+    es = st.session_state.language == 'es'
+    play_tab, world_tab = st.tabs(["💬 Partida" if es else "💬 Game", "🗺️ El mundo" if es else "🗺️ The world"])
+    with play_tab:
+        render_chat()
+    with world_tab:
+        history = st.session_state.chat_history
+        opening = history[0]["content"] if history and history[0].get("role") == "assistant" else ""
+        render_world_viewer(st.session_state.world, opening)
+
+
+def render_chat():
     """Render the main chat interface."""
     st.markdown("### 💬 Adventure Chat")
     
