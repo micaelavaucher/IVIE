@@ -891,27 +891,15 @@ def render_chat():
             st.session_state.current_inspiration
         )
     
-    # Handle pending command if exists (process before displaying anything)
-    if hasattr(st.session_state, 'pending_command') and st.session_state.pending_command:
-        prompt = st.session_state.pending_command
-        st.session_state.pending_command = None  # Clear the pending command
-        
-        # Add user message to chat
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        
-        # Generate response
-        if st.session_state.game_loop:
-            response = st.session_state.game_loop(prompt, st.session_state.chat_history)
-            # Add assistant response to chat
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
-        else:
-            st.session_state.chat_history.append({"role": "assistant", "content": "Game loop not initialized. Please reload the world."})
-    
-    # Display chat history
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-    
+    # The player's message shows at once (send_message), and the turn runs on the next run, under
+    # it, while the chat says it is thinking: before, nothing appeared until the narration was ready
+    awaiting = st.session_state.get('awaiting_response', False)
+    chat_area = st.container()
+    with chat_area:
+        for message in st.session_state.chat_history:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
     # Define quick actions based on language and debug mode
     if st.session_state.debug_mode:
         # Debug mode: show all actions
@@ -964,39 +952,46 @@ def render_chat():
         
         for i, (button_text, command_text) in enumerate(quick_actions):
             with cols[i]:
-                if st.button(button_text, key=f"quick_action_{i}", help=f"Send: {command_text}"):
-                    # Simulate sending the command
-                    st.session_state.pending_command = command_text
-                    st.rerun()
+                if st.button(button_text, key=f"quick_action_{i}", help=f"Send: {command_text}", disabled=awaiting):
+                    send_message(command_text)
     else:
         # Normal mode: center the 2 buttons with left margin
         col1, col2, col3 = st.columns([0.32, 0.32, 0.32])
         
         # Place buttons in the middle columns
         with col2:
-            if st.button(quick_actions[0][0], key="quick_action_0", help=f"Send: {quick_actions[0][1]}"):
-                st.session_state.pending_command = quick_actions[0][1]
-                st.rerun()
+            if st.button(quick_actions[0][0], key="quick_action_0", help=f"Send: {quick_actions[0][1]}", disabled=awaiting):
+                send_message(quick_actions[0][1])
         
         with col3:
-            if st.button(quick_actions[1][0], key="quick_action_1", help=f"Send: {quick_actions[1][1]}"):
-                st.session_state.pending_command = quick_actions[1][1]
-                st.rerun()
+            if st.button(quick_actions[1][0], key="quick_action_1", help=f"Send: {quick_actions[1][1]}", disabled=awaiting):
+                send_message(quick_actions[1][1])
     
-    # Chat input
-    if prompt := st.chat_input("What do you want to do?"):
-        # Add user message to chat
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        
-        # Generate response
-        if st.session_state.game_loop:
-            response = st.session_state.game_loop(prompt, st.session_state.chat_history)
-            # Add assistant response to chat
-            st.session_state.chat_history.append({"role": "assistant", "content": response})
-        else:
-            st.session_state.chat_history.append({"role": "assistant", "content": "Game loop not initialized. Please reload the world."})
-        
+    # Chat input, disabled while a turn runs so a second message cannot interrupt it
+    if prompt := st.chat_input("What do you want to do?", disabled=awaiting):
+        send_message(prompt)
+
+    if awaiting:
+        es = st.session_state.language == 'es'
+        with chat_area:
+            with st.chat_message("assistant"):
+                with st.spinner("Pensando qué pasa…" if es else "Working out what happens…"):
+                    history = st.session_state.chat_history
+                    if st.session_state.game_loop:
+                        response = st.session_state.game_loop(history[-1]["content"], history)
+                    else:
+                        response = "Game loop not initialized. Please reload the world."
+                    # Recorded before any Streamlit call, so a rerun cannot play the turn twice
+                    history.append({"role": "assistant", "content": response})
+                    st.session_state.awaiting_response = False
         st.rerun()
+
+
+def send_message(prompt: str):
+    """Show the player's message in the chat right away; render_chat plays the turn on the next run."""
+    st.session_state.chat_history.append({"role": "user", "content": prompt})
+    st.session_state.awaiting_response = True
+    st.rerun()
 
 def main():
     """Main Streamlit application."""
