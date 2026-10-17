@@ -988,7 +988,12 @@ def render_chat():
 
 
 def send_message(prompt: str):
-    """Show the player's message in the chat right away; render_chat plays the turn on the next run."""
+    """Show the player's message in the chat right away; render_chat plays the turn on the next run.
+
+    Ignored while a turn is waiting: a quick action clicked in the instant before the buttons are
+    disabled would otherwise become the last message, and be answered instead of the player's."""
+    if st.session_state.get('awaiting_response'):
+        return
     st.session_state.chat_history.append({"role": "user", "content": prompt})
     st.session_state.awaiting_response = True
     st.rerun()
