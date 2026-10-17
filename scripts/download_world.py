@@ -42,7 +42,7 @@ def _turn_numbers(trace) -> list:
 
 def list_games(limit):
     fields = {"world_id": 1, "nickname": 1, "created_at": 1, "language": 1, "inspiration": 1, "turns": 1}
-    for trace in _collection().find({}, fields).sort("created_at", -1).limit(limit):
+    for trace in _collection().find({}, fields).sort("_id", -1).limit(limit):
         created = time.strftime("%Y-%m-%d %H:%M", time.localtime(trace.get("created_at") or 0))
         turns = max(_turn_numbers(trace) or [0])
         theme = trace.get("inspiration") or "(Generar)"
@@ -129,7 +129,7 @@ def turns_report(trace) -> list:
 def get_game(world_id):
     collection = _collection()
     trace = (collection.find_one({"world_id": world_id}) if world_id
-             else next(collection.find({}).sort("created_at", -1).limit(1), None))
+             else next(collection.find({}).sort("_id", -1).limit(1), None))
     if trace is None:
         print(f"No encontré ninguna partida{' con world_id ' + world_id if world_id else ''}.")
         return

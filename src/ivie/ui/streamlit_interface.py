@@ -180,17 +180,20 @@ def render_inspiration_mode():
                 st.session_state.inspiration_input = description
                 st.rerun()
     
-    # Text input for inspiration
-    inspiration = st.text_area(
-        texts['PROMPT_LABEL'],
-        value=st.session_state.get('inspiration_input', ''),
-        placeholder=texts['TEXTBOX_LABEL'],
-        height=100
-    )
-    
-    # Generate button
-    if st.button(texts['GENERATE_WORLD'], type="primary", disabled=not inspiration.strip()):
-        generate_world_from_inspiration(inspiration.strip())
+    # A form: Enter in the field creates the world, and the button is always clickable. A text area
+    # only sends its value when it loses focus, so a button disabled on an empty idea stayed grey
+    # while the visitor was still typing, and Enter only added a line break.
+    with st.form("inspiration_form", border=False):
+        st.text_input(texts['PROMPT_LABEL'], key='inspiration_input', placeholder=texts['TEXTBOX_LABEL'])
+        submitted = st.form_submit_button(texts['GENERATE_WORLD'], type="primary")
+
+    if submitted:
+        inspiration = st.session_state.get('inspiration_input', '').strip()
+        if inspiration:
+            generate_world_from_inspiration(inspiration)
+        else:
+            st.warning("✍️ Escribe una idea para tu mundo." if st.session_state.language == 'es'
+                       else "✍️ Write an idea for your world.")
 
 def generate_world_from_inspiration(inspiration: str):
     """Generate world from inspiration with progress display."""
