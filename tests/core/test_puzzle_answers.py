@@ -66,3 +66,23 @@ def test_a_puzzle_saved_before_accepted_answers_still_works():
     del world.puzzles["Riddle"].accepted_answers  # an old saved world
 
     assert _attempt(world, "es el segundo", model_answer="x")
+
+
+def test_an_accepted_answer_that_keeps_most_of_a_long_answer_solves_the_puzzle():
+    world = _world("Primer Fragmento de la Crisálida Madre")
+    world.puzzles["Riddle"].accepted_answers = ["fragmento de la crisálida madre", "primer fragmento", "el fragmento"]
+
+    assert _attempt(world, "sos el fragmento de la crisalida madre", model_answer="el fragmento de la crisalida madre")
+    assert world.puzzles["Riddle"].answers() == ["Primer Fragmento de la Crisálida Madre", "fragmento de la crisálida madre"]
+
+
+@pytest.mark.parametrize("answer, fragment", [
+    ("Primer Fragmento de la Crisálida Madre", "primer fragmento"),
+    ("short-long-short-long", "short long"),
+    ("Torre del Reloj", "reloj"),
+])
+def test_an_accepted_answer_that_is_half_of_the_answer_or_less_does_not_count(answer, fragment):
+    world = _world(answer)
+    world.puzzles["Riddle"].accepted_answers = [fragment]
+
+    assert not _attempt(world, f"la respuesta es {fragment}", model_answer=fragment)

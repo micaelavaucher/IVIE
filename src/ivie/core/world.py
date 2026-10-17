@@ -155,13 +155,23 @@ class Puzzle (Component):
   def is_answered_by(self, text: str) -> bool:
     """Whether the text contains the answer or one of the accepted phrasings, as whole words.
 
-    A part of the answer is never an answer: "reloj" is not "Torre del Reloj", "short long" is not
-    "short-long-short-long". An accepted phrasing that is only a fragment of the answer is ignored.
+    A small part of the answer is not an answer: "reloj" is not "Torre del Reloj", "short long" is
+    not "short-long-short-long". An accepted phrasing that is a fragment of the answer counts only
+    if it keeps more than half of its words: "fragmento de la crisálida madre" answers "Primer
+    Fragmento de la Crisálida Madre" (a player wrote it and was told it was wrong).
     """
-    answer = f" {World.answer_words(self.answer)} "
-    candidates = [self.answer] + [accepted for accepted in (getattr(self, 'accepted_answers', None) or [])
-                                  if f" {World.answer_words(accepted)} " not in answer]
-    return any(World.answer_in_text(candidate, text) for candidate in candidates if candidate)
+    return any(World.answer_in_text(candidate, text) for candidate in self.answers() if candidate)
+
+  def answers(self) -> 'list[str]':
+    """The answer and the accepted phrasings that are not too small a part of it."""
+    answer = World.answer_words(self.answer)
+    answers = [self.answer]
+    for accepted in getattr(self, 'accepted_answers', None) or []:
+      words = World.answer_words(accepted)
+      is_fragment = f" {words} " in f" {answer} " and words != answer
+      if not is_fragment or len(words.split()) * 2 > len(answer.split()):
+        answers.append(accepted)
+    return answers
 
 
 class Item (Component):
@@ -1469,35 +1479,26 @@ class World:
       return None
 
   def _find_object_flexible(self, object_name: str):
-      # Strategy 1: Exact match (preserves existing behavior)
+      """An item by name: exact; then ignoring case, accents, punctuation and a leading article;
+      then a name that contains the other or starts with it.
+
+      Players write names as they like ("llave runica antigua" for "Llave Rúnica Antigua"), and some
+      fields carry the player's own wording, so accents must not decide whether they have an item.
+      Parenthetical words are kept: they tell apart items like "Fragment (Wisdom)" and "Fragment (Power)".
+      """
+      from ..llm.name_matching import fold_name
       if object_name in self.items:
           return self.items[object_name]
-      
-      # Strategy 2: Case-insensitive exact match
+      wanted = fold_name(object_name or "")
+      if not wanted:
+          return None
       for name, item in self.items.items():
-          if name.lower() == object_name.lower():
+          if fold_name(name) == wanted:
               return item
-      
-      # Strategy 3: Partial matching - object_name contained in item name or item name starts with object_name
       for name, item in self.items.items():
-          # Remove common articles and prepositions for better matching
-          clean_object_name = object_name.lower().strip()
-          clean_item_name = name.lower().strip()
-          
-          # Remove leading articles in both Spanish and English
-          for article in ['el ', 'la ', 'los ', 'las ', 'un ', 'una ', 'the ', 'a ', 'an ']:
-              if clean_object_name.startswith(article):
-                  clean_object_name = clean_object_name[len(article):]
-              if clean_item_name.startswith(article):
-                  clean_item_name = clean_item_name[len(article):]
-          
-          # Check if the cleaned object name is contained in the item name or vice versa
-          if (clean_object_name in clean_item_name or 
-              clean_item_name.startswith(clean_object_name) or
-              clean_object_name.startswith(clean_item_name)):
+          candidate = fold_name(name)
+          if wanted in candidate or wanted.startswith(candidate):
               return item
-      
-      # No match found
       return None
 
   def _unblock_passages_for_solved_puzzle(self, puzzle_name: str, puzzle: 'Puzzle'):

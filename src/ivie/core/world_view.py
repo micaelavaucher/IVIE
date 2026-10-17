@@ -337,7 +337,7 @@ def _items(world, language) -> list:
 def _puzzles(world, language) -> list:
     return [PuzzleView(
         name=puzzle.name, kind=str(getattr(puzzle.puzzle_type, 'value', puzzle.puzzle_type) or ""),
-        problem=puzzle.problem, answer=puzzle.answer, also_accepted=list(getattr(puzzle, 'accepted_answers', None) or []),
+        problem=puzzle.problem, answer=puzzle.answer, also_accepted=puzzle.answers()[1:],
         rewards=[_reward_text(reward, language) for reward in puzzle.rewards],
         presented=puzzle_access(world, puzzle, language),
         hints=[text for text in (_hint_text(hint, language) for hint in (puzzle.puzzle_hints or [])) if text],

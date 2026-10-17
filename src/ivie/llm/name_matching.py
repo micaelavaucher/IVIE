@@ -21,12 +21,20 @@ def normalize_name(name: str) -> str:
 
     Dotted acronyms collapse ("A.I.D.A." -> "aida"). Returns "" for an empty name.
     """
+    return fold_name(re.sub(r"\([^)]*\)", " ", name or ""))
+
+
+def fold_name(name: str) -> str:
+    """Lowercase, no accents, no punctuation, no leading article, keeping parenthetical words.
+
+    For names told apart only by a parenthetical, such as two items "Fragment (Wisdom)" and
+    "Fragment (Power)". Returns "" for an empty name.
+    """
     if not name:
         return ""
     text = unicodedata.normalize("NFKD", name)
     text = "".join(char for char in text if not unicodedata.combining(char))
     text = text.lower()
-    text = re.sub(r"\([^)]*\)", " ", text)
     text = text.replace(".", "")
     text = re.sub(r"[^\w\s]", " ", text)
     tokens = text.split()

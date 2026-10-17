@@ -21,7 +21,7 @@ import examples.example_worlds as example_worlds
 def initialize_session_state():
     """Initialize Streamlit session state variables."""
     if 'language' not in st.session_state:
-        st.session_state.language = 'en'  # Default to English
+        st.session_state.language = 'es'  # Visitors at the demo write in Spanish
     
     if 'nickname' not in st.session_state:
         st.session_state.nickname = ''

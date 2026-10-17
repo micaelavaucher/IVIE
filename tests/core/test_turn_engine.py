@@ -138,6 +138,27 @@ def test_a_blocked_passage_opens_only_with_its_item():
     assert opened.arrived_at is world.locations["Despacho"] and opened.first_visit
 
 
+def test_the_item_the_player_names_without_accents_opens_its_passage():
+    world = _world()
+    world.items["Llave del Despacho"].name = "Llave Rúnica"
+    world.items["Llave Rúnica"] = world.items.pop("Llave del Despacho")
+    apply_turn(world, _intent(moves=[("Llave Rúnica", "Jugador")]), "le pido la llave")
+
+    opened = apply_turn(world, _intent(passages_to_open=[{"destination": "Despacho", "using_item": "llave runica"}]),
+                        "abro el despacho con la llave runica")
+
+    assert opened.kinds() == ["passage_opened"]
+
+
+def test_items_told_apart_by_a_parenthetical_are_found_apart():
+    world = _world()
+    wisdom, power = Item("Fragmento (Sabiduría)", ["d"]), Item("Fragmento (Poder)", ["d"])
+    world.add_items([wisdom, power])
+
+    assert world._find_object_flexible("fragmento (poder)") is power
+    assert world._find_object_flexible("Fragmento (Sabiduria)") is wisdom
+
+
 def test_moving_through_a_blocked_or_missing_connection_is_refused():
     world = _world()
     blocked = apply_turn(world, _intent(go="Despacho"), "voy al despacho")
